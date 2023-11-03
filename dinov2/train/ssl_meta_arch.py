@@ -130,6 +130,11 @@ class SSLMetaArch(nn.Module):
             loss.backward()
 
     def forward_backward(self, images, teacher_temp):
+        assert False, {
+            k: v.shape
+            for (k, v)
+            in images.items()
+        }
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
