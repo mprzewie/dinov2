@@ -242,7 +242,7 @@ class CASSLEDataAugmentationDINO(object):
                     p=0.8,
                     defaults={
                         "jitter": torch.tensor([1.0, 1.0, 1.0, 0.0]),
-                        "diff": [0.0, 0.0, 0.0]
+                        "diff": torch.tensor([0.0, 0.0, 0.0])
                     }
                 ),
                 CASSLERandomGrayscale(p=0.2),

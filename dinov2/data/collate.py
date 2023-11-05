@@ -12,10 +12,33 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
 
     n_global_crops = len(samples_list[0][0]["global_crops"])
     n_local_crops = len(samples_list[0][0]["local_crops"])
+    aug_keys = sorted(samples_list[0][0]["global_crops_ap"][0].keys())
 
     collated_global_crops = torch.stack([s[0]["global_crops"][i] for i in range(n_global_crops) for s in samples_list])
 
+    collated_global_crops_ap = dict()
+    # for k in aug_keys:
+    #     collated_global_crops_ap[k] = torch.stack([s[0]["global_crops_ap"][k][i] for i in range(n_global_crops) for s in samples_list])
+
+
+    collated_global_crops_ap["concat"] = torch.stack([
+        torch.concat([s[0]["global_crops_ap"][i][k] for k in aug_keys])
+        for i in range(n_global_crops) for s in samples_list
+    ])
+
     collated_local_crops = torch.stack([s[0]["local_crops"][i] for i in range(n_local_crops) for s in samples_list])
+
+    collated_local_crops_ap = dict()
+
+    # for k in aug_keys:
+    #     collated_local_crops_ap[k] = torch.stack(
+    #         [s[0]["local_crops_ap"][k][i] for i in range(n_global_crops) for s in samples_list])
+
+    collated_local_crops_ap["concat"] = torch.stack([
+        torch.concat([s[0]["local_crops_ap"][i][k] for k in aug_keys])
+        for i in range(n_local_crops) for s in samples_list
+    ])
+
 
     B = len(collated_global_crops)
     N = n_tokens
@@ -41,6 +64,8 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
     return {
         "collated_global_crops": collated_global_crops.to(dtype),
         "collated_local_crops": collated_local_crops.to(dtype),
+        "collated_global_crops_ap:concat": collated_global_crops_ap["concat"].to(dtype),
+        "collated_local_crops_ap:concat": collated_local_crops_ap["concat"].to(dtype),
         "collated_masks": collated_masks,
         "mask_indices_list": mask_indices_list,
         "masks_weight": masks_weight,
