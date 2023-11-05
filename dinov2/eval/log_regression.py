@@ -10,7 +10,6 @@ import sys
 import time
 from typing import List, Optional
 
-from cuml.linear_model import LogisticRegression
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed
@@ -26,13 +25,13 @@ from dinov2.eval.setup import get_args_parser as get_setup_args_parser
 from dinov2.eval.setup import setup_and_build_model
 from dinov2.eval.utils import evaluate, extract_features
 from dinov2.utils.dtype import as_torch_dtype
-
-
 logger = logging.getLogger("dinov2")
 
 DEFAULT_MAX_ITER = 1_000
 C_POWER_RANGE = torch.linspace(-6, 5, 45)
 _CPU_DEVICE = torch.device("cpu")
+
+
 
 
 def get_args_parser(
@@ -117,6 +116,7 @@ class LogRegModule(nn.Module):
         super().__init__()
         self.dtype = dtype
         self.device = device
+        from cuml.linear_model import LogisticRegression
         self.estimator = LogisticRegression(
             penalty="l2",
             C=C,
