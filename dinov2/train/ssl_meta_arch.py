@@ -54,6 +54,23 @@ class SSLMetaArch(nn.Module):
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
         self.ibot_separate_head = cfg.ibot.separate_head
+        self.cassle = cfg.train.cassle
+
+        #######
+        CASSLE_N_IN = 15
+        CASSLE_N_OUT = 64
+        def get_aug_processor(n_in: int = CASSLE_N_IN, n_out: int = CASSLE_N_OUT, depth: int = 6):
+            # TODO those are magic numbers
+            # 15 = (4:crop) + (4:jitter) + (3:diff) + (1:flip) + (1:blur) + (1:grayscale) + (1:solarize)
+            from dinov2.layers.dino_head import _build_mlp
+            return _build_mlp(
+                nlayers=depth,
+                in_dim=n_in,
+                bottleneck_dim=n_out,
+                hidden_dim=n_out,
+                bias=True,
+            )
+        #######
 
         logger.info("OPTIONS -- DINO")
         if self.do_dino:
@@ -64,7 +81,7 @@ class SSLMetaArch(nn.Module):
             self.dino_loss_weight = cfg.dino.loss_weight
             dino_head = partial(
                 DINOHead,
-                in_dim=embed_dim,
+                in_dim=(embed_dim if not self.cassle else embed_dim + CASSLE_N_OUT),
                 out_dim=cfg.dino.head_n_prototypes,
                 hidden_dim=cfg.dino.head_hidden_dim,
                 bottleneck_dim=cfg.dino.head_bottleneck_dim,
@@ -81,6 +98,11 @@ class SSLMetaArch(nn.Module):
         if self.do_dino or self.do_ibot:
             student_model_dict["dino_head"] = dino_head()
             teacher_model_dict["dino_head"] = dino_head()
+
+            if cfg.train.cassle:
+                logger.info("OPTIONS -- CASSLE")
+                student_model_dict["aug_processor"] = get_aug_processor()
+                teacher_model_dict["aug_processor"] = get_aug_processor()
 
         logger.info("OPTIONS -- IBOT")
         logger.info(f"OPTIONS -- IBOT -- loss_weight: {cfg.ibot.loss_weight}")
@@ -99,7 +121,7 @@ class SSLMetaArch(nn.Module):
                 logger.info(f"OPTIONS -- IBOT -- head_hidden_dim: {cfg.ibot.head_hidden_dim}")
                 ibot_head = partial(
                     DINOHead,
-                    in_dim=embed_dim,
+                    in_dim=(embed_dim if not self.cassle else embed_dim + CASSLE_N_OUT),
                     out_dim=cfg.ibot.head_n_prototypes,
                     hidden_dim=cfg.ibot.head_hidden_dim,
                     bottleneck_dim=cfg.ibot.head_bottleneck_dim,
@@ -130,18 +152,14 @@ class SSLMetaArch(nn.Module):
             loss.backward()
 
     def forward_backward(self, images, teacher_temp):
-        assert False, {
-            k: (v.shape if isinstance(v, torch.Tensor) else type(v))
-            for (k, v)
-            in images.items()
-        }
-        # TODO (mprzewie) pick up here
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
 
         global_crops = images["collated_global_crops"].cuda(non_blocking=True)
         local_crops = images["collated_local_crops"].cuda(non_blocking=True)
+        global_crops_ap = images["collated_global_crops_ap:concat"].cuda(non_blocking=True)
+        local_crops_ap = images["collated_local_crops_ap:concat"].cuda(non_blocking=True)
 
         masks = images["collated_masks"].cuda(non_blocking=True)
         mask_indices_list = images["mask_indices_list"].cuda(non_blocking=True)
@@ -169,6 +187,18 @@ class SSLMetaArch(nn.Module):
             # watch out: these are chunked and cat'd in reverse so A is matched to B in the global crops dino loss
             teacher_cls_tokens = torch.cat((teacher_cls_tokens[1], teacher_cls_tokens[0]))
             ibot_teacher_patch_tokens = teacher_backbone_output_dict["x_norm_patchtokens"]
+
+            if self.cassle:
+                teacher_ap_embeddings = self.teacher.aug_processor(global_crops_ap)
+                teacher_cls_tokens = torch.cat([teacher_cls_tokens, teacher_ap_embeddings], dim=1)
+                _np = ibot_teacher_patch_tokens.shape[1]
+                ibot_teacher_patch_tokens = torch.cat(
+                    [
+                        ibot_teacher_patch_tokens, teacher_ap_embeddings.unsqueeze(1).repeat(1, _np, 1),
+                    ],
+                    dim=2
+                )
+
             _dim = ibot_teacher_patch_tokens.shape[-1]
             n_cls_tokens = teacher_cls_tokens.shape[0]
 
@@ -242,20 +272,38 @@ class SSLMetaArch(nn.Module):
             [global_crops, local_crops], masks=[masks, None], is_training=True
         )
 
+
         inputs_for_student_head_list = []
 
         # 1a: local crops cls tokens
         student_local_cls_tokens = student_local_backbone_output_dict["x_norm_clstoken"]
-        inputs_for_student_head_list.append(student_local_cls_tokens.unsqueeze(0))
 
         # 1b: global crops cls tokens
         student_global_cls_tokens = student_global_backbone_output_dict["x_norm_clstoken"]
+
+        if self.cassle:
+            student_local_ap_embeddings = self.student.aug_processor(local_crops_ap)
+            student_local_cls_tokens = torch.cat([student_local_cls_tokens, student_local_ap_embeddings], dim=1)
+            student_global_ap_embeddings = self.student.aug_processor(global_crops_ap)
+            student_global_cls_tokens = torch.cat([student_global_cls_tokens, student_global_ap_embeddings], dim=1)
+
+        inputs_for_student_head_list.append(student_local_cls_tokens.unsqueeze(0))
         inputs_for_student_head_list.append(student_global_cls_tokens.unsqueeze(0))
 
         # 1c: global crops patch tokens
         if do_ibot:
-            _dim = student_global_backbone_output_dict["x_norm_clstoken"].shape[-1]
             ibot_student_patch_tokens = student_global_backbone_output_dict["x_norm_patchtokens"]
+
+            if self.cassle:
+                _np = ibot_student_patch_tokens.shape[1]
+                ibot_student_patch_tokens = torch.cat(
+                        [
+                        ibot_student_patch_tokens, student_global_ap_embeddings.unsqueeze(1).repeat(1, _np, 1),
+                    ],
+                    dim=2
+                )
+
+            _dim = ibot_student_patch_tokens.shape[-1]
             buffer_tensor_patch_tokens = ibot_student_patch_tokens.new_zeros(upperbound, _dim)
             buffer_tensor_patch_tokens[:n_masked_patches].copy_(
                 torch.index_select(ibot_student_patch_tokens.flatten(0, 1), dim=0, index=mask_indices_list)
