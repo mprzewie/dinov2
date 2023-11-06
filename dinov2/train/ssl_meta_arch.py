@@ -131,10 +131,11 @@ class SSLMetaArch(nn.Module):
 
     def forward_backward(self, images, teacher_temp):
         assert False, {
-            k: v.shape
+            k: (v.shape if isinstance(v, torch.Tensor) else type(v))
             for (k, v)
             in images.items()
         }
+        # TODO (mprzewie) pick up here
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
