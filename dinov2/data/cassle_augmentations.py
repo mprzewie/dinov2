@@ -141,7 +141,8 @@ class CASSLERandomApply(transforms.RandomApply):
         self.defaults = defaults or dict()
 
     def forward(self, img):
-        if self.p < torch.rand(1):
+        applied = torch.rand(1)
+        if self.p <= applied:
             return img, self.defaults
         augmentations_dict = dict()
         for i, t in enumerate(self.transforms):
@@ -157,6 +158,8 @@ class CASSLERandomApply(transforms.RandomApply):
             set(self.defaults.keys()),
             self.transforms,
             augmentations_dict,
+            self.p,
+            applied
         )
         return img, augmentations_dict
 
