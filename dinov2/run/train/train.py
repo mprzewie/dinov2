@@ -43,7 +43,7 @@ class Trainer(object):
 
 def main():
     description = "Submitit launcher for DINOv2 training"
-    train_args_parser = get_train_args_parser(add_help=True)
+    train_args_parser = get_train_args_parser(add_help=False)
     parents = [train_args_parser]
     args_parser = get_args_parser(description=description, parents=parents)
     args = args_parser.parse_args()
