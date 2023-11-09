@@ -13,6 +13,8 @@ class ClusterType(Enum):
     AWS = "aws"
     FAIR = "fair"
     RSC = "rsc"
+    PLGRID = "plgrid"
+    IDEAS = "ideas"
 
 
 def _guess_cluster_type() -> ClusterType:
@@ -24,6 +26,15 @@ def _guess_cluster_type() -> ClusterType:
         elif uname.nodename.startswith("rsc"):
             # Linux kernel versions on RSC instances are standard ones but hostnames start with "rsc"
             return ClusterType.RSC
+
+    import getpass
+    username = getpass.getuser()
+    if username.startswith("plg"):
+        return ClusterType.PLGRID
+    elif username.startswith("marcin"):
+        return ClusterType.IDEAS
+
+    assert False, "Can't guess cluster"
 
     return ClusterType.FAIR
 
@@ -43,6 +54,8 @@ def get_checkpoint_path(cluster_type: Optional[ClusterType] = None) -> Optional[
     CHECKPOINT_DIRNAMES = {
         ClusterType.AWS: "checkpoints",
         ClusterType.FAIR: "checkpoint",
+        ClusterType.PLGRID: "checkpoint",
+        ClusterType.IDEAS: "checkpoint",
         ClusterType.RSC: "checkpoint/dino",
     }
     return Path("/") / CHECKPOINT_DIRNAMES[cluster_type]
@@ -67,6 +80,9 @@ def get_slurm_partition(cluster_type: Optional[ClusterType] = None) -> Optional[
         ClusterType.AWS: "learnlab",
         ClusterType.FAIR: "plgrid-gpu-a100",
         ClusterType.RSC: "learn",
+        ClusterType.PLGRID: "plgrid-gpu-a100",
+        ClusterType.IDEAS: "batch",
+
     }
     return SLURM_PARTITIONS[cluster_type]
 
