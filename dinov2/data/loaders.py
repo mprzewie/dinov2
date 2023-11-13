@@ -218,5 +218,6 @@ def make_data_loader(
     try:
         logger.info(f"# of batches: {len(data_loader):,d}")
     except TypeError:  # data loader has no length
+        raise
         logger.info("infinite data loader")
     return data_loader

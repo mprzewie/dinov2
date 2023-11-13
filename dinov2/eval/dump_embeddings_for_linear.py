@@ -77,6 +77,10 @@ def get_args_parser(
 def build_step(X, Y, classifier, optimizer, w, criterion_fn):
     def step():
         optimizer.zero_grad()
+        #assert False, [t.device for t in [
+        #    X, Y,
+        #    classifier.weight, classifier.bias
+        #]]
         loss = criterion_fn(classifier(X), Y, reduction='sum')
         for p in classifier.parameters():
             loss = loss + p.pow(2).sum().mul(w)
@@ -169,8 +173,8 @@ def test_linear(
     elif args.metric == "r2":
         criterion_fn = l1_criterion_fn()
         metric = r2_fn()
-
-    classifier = nn.Linear(args.num_backbone_features, num_classes).cuda()
+    
+    classifier = nn.Linear(embeddings["train"]["features"].shape[1], num_classes).cuda()
     optim_kwargs = {
         'line_search_fn': 'strong_wolfe',
         'max_iter': 5000,
@@ -178,26 +182,31 @@ def test_linear(
         'tolerance_grad': 1e-10,
         'tolerance_change': 0,
     }
-    logger.log_msg('collecting features ... done')
+
 
     best_acc = 0.
     best_w = 0.
     best_classifier = None
 
-    X_train = embeddings["train"]["features"]
-    Y_train = embeddings["train"]["labels"]
-    X_val = embeddings["val"]["features"]
-    Y_val = embeddings["val"]["labels"]
+    X_train = embeddings["train"]["features"].cuda()
+    Y_train = embeddings["train"]["labels"].cuda()
+    
+    X_val = embeddings["val"]["features"].cuda()
+    Y_val = embeddings["val"]["labels"].cuda()
 
-    X_test = embeddings["test"]["features"]
-    Y_test = embeddings["test"]["labels"]
+    X_test = embeddings["test"]["features"].cuda()
+    Y_test = embeddings["test"]["labels"].cuda()
 
-    X_trainval = embeddings["trainval"]["features"]
-    Y_trainval = embeddings["trainval"]["labels"]
+    X_trainval = embeddings["trainval"]["features"].cuda()
+    Y_trainval = embeddings["trainval"]["labels"].cuda()
 
     for w in tqdm(torch.logspace(-6, 5, steps=45).tolist(), "Gridsearch over w"):
         optimizer = optim.LBFGS(classifier.parameters(), **optim_kwargs)
-
+        
+        # assert False, [t.device for t in [
+        #     X_train, Y_train, X_val, Y_val, X_test, Y_test, X_trainval, Y_trainval,
+        #     classifier.weight, classifier.bias
+        # ]]
         optimizer.step(
             build_step(X_train, Y_train, classifier, optimizer, w, criterion_fn=criterion_fn))
         acc = compute_accuracy(X_val, Y_val, classifier, metric)
@@ -207,7 +216,7 @@ def test_linear(
             best_w = w
             best_classifier = deepcopy(classifier)
 
-    logger.log_msg(f'BEST: w={best_w:.4e}, acc={best_acc:.4f}')
+    print(f'BEST: w={best_w:.4e}, acc={best_acc:.4f}')
 
     optimizer = optim.LBFGS(best_classifier.parameters(), **optim_kwargs)
     optimizer.step(build_step(X_trainval, Y_trainval, best_classifier, optimizer, best_w, criterion_fn=criterion_fn))
@@ -231,7 +240,7 @@ def run_dump_embeddings(
         pretrain_data="imagenet100",
     )
     training_num_classes = datasets["num_classes"]
-    sampler_type = SamplerType.SHARDED_INFINITE
+    sampler_type = None #SamplerType.SHARDED_INFINITE
 
     n_last_blocks_list = [1, 4]
     n_last_blocks = max(n_last_blocks_list)
@@ -265,11 +274,12 @@ def run_dump_embeddings(
                 features = features.detach().cpu()
                 all_embeddings.append(features)
                 all_labels.append(labels)
+                #break 
 
 
             result[key] = {
-                "features": torch.stack(all_embeddings),
-                "labels": torch.stack(all_labels)
+                "features": torch.cat(all_embeddings, dim=0),
+                "labels": torch.cat(all_labels, dim=0)
             }
             print(key)
             print({
