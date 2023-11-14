@@ -8,9 +8,10 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, TypeVar
 
 import torch
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler, Dataset
 
 from .datasets import ImageNet, ImageNet22k
+from .datasets.other_datasets import load_datasets
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
 
 
@@ -54,12 +55,21 @@ def _parse_dataset_str(dataset_str: str):
 
     if name == "ImageNet":
         class_ = ImageNet
+        # from dinov2.data.datasets.image_net import ImageNetMock
+        # class_ = ImageNetMock
         if "split" in kwargs:
             kwargs["split"] = ImageNet.Split[kwargs["split"]]
     elif name == "ImageNet22k":
         class_ = ImageNet22k
+
     else:
-        raise ValueError(f'Unsupported dataset "{name}"')
+        class_ = load_datasets(
+            dataset=name,
+            datadir=kwargs["root"],
+            pretrain_data="imagenet100"
+        )[kwargs['split'].lower()]
+    # else:
+    #     raise ValueError(f'Unsupported dataset "{name}"')
 
     return class_, kwargs
 
@@ -84,16 +94,18 @@ def make_dataset(
     logger.info(f'using dataset: "{dataset_str}"')
 
     class_, kwargs = _parse_dataset_str(dataset_str)
-    dataset = class_(transform=transform, target_transform=target_transform, **kwargs)
+
+    if not isinstance(class_, Dataset):
+        dataset = class_(transform=transform, target_transform=target_transform, **kwargs)
+        # Aggregated datasets do not expose (yet) these attributes, so add them.
+        if not hasattr(dataset, "transform"):
+            setattr(dataset, "transform", transform)
+        if not hasattr(dataset, "target_transform"):
+            setattr(dataset, "target_transform", target_transform)
+    else:
+        dataset = class_
 
     logger.info(f"# of dataset samples: {len(dataset):,d}")
-
-    # Aggregated datasets do not expose (yet) these attributes, so add them.
-    if not hasattr(dataset, "transform"):
-        setattr(dataset, "transform", transform)
-    if not hasattr(dataset, "target_transform"):
-        setattr(dataset, "target_transform", target_transform)
-
     return dataset
 
 

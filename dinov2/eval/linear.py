@@ -496,9 +496,11 @@ def run_eval_linear(
         dataset_str=train_dataset_str,
         transform=train_transform,
     )
-    training_num_classes = len(torch.unique(torch.Tensor(train_dataset.get_targets().astype(int))))
-    sampler_type = SamplerType.SHARDED_INFINITE
+
+    training_num_classes = len(torch.unique(torch.Tensor([y for _, y in train_dataset])))
+    # sampler_type = SamplerType.SHARDED_INFINITE
     # sampler_type = SamplerType.INFINITE
+    sampler_type=None
 
     n_last_blocks_list = [1, 4]
     n_last_blocks = max(n_last_blocks_list)

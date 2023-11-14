@@ -288,3 +288,23 @@ class ImageNet(ExtendedVisionDataset):
     def dump_extra(self) -> None:
         self._dump_entries()
         self._dump_class_ids_and_names()
+
+class ImageNetMock(ImageNet):
+    def __init__(
+            self,
+            *,
+            split: "ImageNet.Split",
+            root: str = None,
+            extra: str = None,
+            transforms: Optional[Callable] = None,
+            transform: Optional[Callable] = None,
+            target_transform: Optional[Callable] = None,
+    ) -> None:
+        super().__init__(split=split, root=root, extra=extra, transforms=transforms, transform=transform, target_transform=target_transform)
+
+    def __len__(self) -> int:
+        return 10
+
+    def __getitem__(self, index: int):
+        from PIL import Image
+        return self.transforms(Image.new("RGB", (224,224)), -1)
