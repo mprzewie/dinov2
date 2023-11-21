@@ -269,6 +269,12 @@ def run_dump_embeddings(
 
             for data, labels in tqdm(loader, desc=f"{dataset_name}: {key}"):
                 data = data.cuda(non_blocking=True)
+
+                if data.ndim == 5:
+                    _, n, c, h, w = data.shape
+                    data = data.view(-1, c, h, w)
+                    labels = labels.view(-1, 1).repeat(1, n).view(-1)
+
                 features = model(data)
 
                 features = features.detach().cpu()
