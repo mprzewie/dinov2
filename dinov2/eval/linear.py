@@ -349,6 +349,11 @@ def eval_linear(
         data = data.cuda(non_blocking=True)
         labels = labels.cuda(non_blocking=True)
 
+        if data.ndim == 5:
+            _, n, c, h, w = data.shape
+            data = data.view(-1, c, h, w)
+            labels = labels.view(-1, 1).repeat(1, n).view(-1)
+
         features = feature_model(data)
         outputs = linear_classifiers(features)
 
