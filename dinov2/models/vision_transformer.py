@@ -18,7 +18,7 @@ import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
 from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
-
+from dinov2.layers.attention import Attention
 
 logger = logging.getLogger("dinov2")
 
@@ -336,6 +336,19 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
         if module.bias is not None:
             nn.init.zeros_(module.bias)
 
+
+def vit_small_attn(patch_size=16, num_register_tokens=0, **kwargs):
+    model = DinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=384,
+        depth=12,
+        num_heads=6,
+        mlp_ratio=4,
+        block_fn=partial(Block, attn_class=Attention),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
+    return model
 
 def vit_small(patch_size=16, num_register_tokens=0, **kwargs):
     model = DinoVisionTransformer(
