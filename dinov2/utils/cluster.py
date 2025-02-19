@@ -10,9 +10,11 @@ from typing import Any, Dict, Optional
 
 
 class ClusterType(Enum):
-    AWS = "aws"
-    FAIR = "fair"
-    RSC = "rsc"
+    # AWS = "aws"
+    # FAIR = "fair"
+    # RSC = "rsc"
+    HELIOS = "helios"
+    ATHENA = "athena"
 
 
 def _guess_cluster_type() -> ClusterType:
@@ -41,9 +43,10 @@ def get_checkpoint_path(cluster_type: Optional[ClusterType] = None) -> Optional[
         return None
 
     CHECKPOINT_DIRNAMES = {
-        ClusterType.AWS: "checkpoints",
-        ClusterType.FAIR: "checkpoint",
-        ClusterType.RSC: "checkpoint/dino",
+        # ClusterType.AWS: "checkpoints",
+        # ClusterType.FAIR: "checkpoint",
+        # ClusterType.RSC: "checkpoint/dino",
+
     }
     return Path("/") / CHECKPOINT_DIRNAMES[cluster_type]
 
