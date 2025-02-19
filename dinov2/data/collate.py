@@ -38,6 +38,8 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
 
     masks_weight = (1 / collated_masks.sum(-1).clamp(min=1.0)).unsqueeze(-1).expand_as(collated_masks)[collated_masks]
 
+    encoded_targets = torch.stack([l for (s, l) in samples_list]).float()
+
     return {
         "collated_global_crops": collated_global_crops.to(dtype),
         "collated_local_crops": collated_local_crops.to(dtype),
@@ -46,4 +48,5 @@ def collate_data_and_cast(samples_list, mask_ratio_tuple, mask_probability, dtyp
         "masks_weight": masks_weight,
         "upperbound": upperbound,
         "n_masked_patches": torch.full((1,), fill_value=mask_indices_list.shape[0], dtype=torch.long),
+        "collated_labels": encoded_targets,
     }

@@ -5,6 +5,7 @@
 
 from typing import Any, Tuple
 
+import torch
 from torch.utils.data import Dataset
 
 
@@ -26,3 +27,13 @@ class DatasetWithEnumeratedTargets(Dataset):
 
     def __len__(self) -> int:
         return len(self._dataset)
+
+
+def encode_target(target):
+    if isinstance(target, int):
+        encoding = torch.zeros(1000)
+        encoding[target] = 1
+    else:
+        raise NotImplementedError((target, type(target)))
+
+    return encoding
