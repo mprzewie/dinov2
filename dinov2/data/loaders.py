@@ -4,6 +4,7 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 import logging
+import os
 from enum import Enum
 from typing import Any, Callable, List, Optional, TypeVar
 
@@ -206,6 +207,9 @@ def make_data_loader(
         advance=sampler_advance,
     )
 
+    def worker_init_fn(worker_id):
+        os.sched_setaffinity(0, range(os.cpu_count()))
+
     logger.info("using PyTorch data loader")
     data_loader = torch.utils.data.DataLoader(
         dataset,
@@ -216,6 +220,7 @@ def make_data_loader(
         drop_last=drop_last,
         persistent_workers=persistent_workers,
         collate_fn=collate_fn,
+        worker_init_fn=worker_init_fn
     )
 
     try:
