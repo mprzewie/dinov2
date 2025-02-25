@@ -2,12 +2,14 @@
 #
 # This source code is licensed under the Apache License, Version 2.0
 # found in the LICENSE file in the root directory of this source tree.
-
+import logging
 from typing import Any, Tuple
 
 import torch
 from torch.utils.data import Dataset
 
+
+logger = logging.getLogger("dinov2")
 
 class DatasetWithEnumeratedTargets(Dataset):
     def __init__(self, dataset):
@@ -29,11 +31,22 @@ class DatasetWithEnumeratedTargets(Dataset):
         return len(self._dataset)
 
 
-def encode_target(target):
-    if isinstance(target, int):
-        encoding = torch.zeros(1000)
-        encoding[target] = 1
-    else:
-        raise NotImplementedError((target, type(target)))
+class TargetEncoder:
+    def __init__(self, encoding_size: int=1000):
+        self.encoding_size = encoding_size
+        self.warned = False
 
-    return encoding
+    def __call__(self, target) -> torch.Tensor:
+        if isinstance(target, int):
+            encoding = torch.zeros(self.encoding_size)
+            if target > 0 and target < self.encoding_size:
+                encoding[target] = 1
+            elif not self.warned:
+                logger.warning(
+                    f"Target {target} is out of bounds for encoding size {self.encoding_size}"
+                )
+                self.warned = True
+        else:
+            raise NotImplementedError((target, type(target)))
+
+        return encoding

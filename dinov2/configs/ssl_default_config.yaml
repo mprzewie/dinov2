@@ -81,6 +81,7 @@ student:
   proj_bias: true
   ffn_bias: true
   num_register_tokens: 0
+  register_prompt_size: 0
   interpolate_antialias: false
   interpolate_offset: 0.1
 teacher:

@@ -143,6 +143,8 @@ class SSLMetaArch(nn.Module):
         n_masked_patches = mask_indices_list.shape[0]
         upperbound = images["upperbound"]
         masks_weight = images["masks_weight"].cuda(non_blocking=True)
+        register_global_prompts = images["collated_global_labels"].cuda(non_blocking=True)
+        register_local_prompts = images["collated_local_labels"].cuda(non_blocking=True)
 
         n_local_crops_loss_terms = max(n_local_crops * n_global_crops, 1)
         n_global_crops_loss_terms = (n_global_crops - 1) * n_global_crops
@@ -157,7 +159,7 @@ class SSLMetaArch(nn.Module):
         @torch.no_grad()
         def get_teacher_output():
             x, n_global_crops_teacher = global_crops, n_global_crops
-            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True)
+            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=register_global_prompts)
             teacher_cls_tokens = teacher_backbone_output_dict["x_norm_clstoken"]
             teacher_cls_tokens = teacher_cls_tokens.chunk(n_global_crops_teacher)
             # watch out: these are chunked and cat'd in reverse so A is matched to B in the global crops dino loss
@@ -233,7 +235,7 @@ class SSLMetaArch(nn.Module):
 
         loss_accumulator = 0  # for backprop
         student_global_backbone_output_dict, student_local_backbone_output_dict = self.student.backbone(
-            [global_crops, local_crops], masks=[masks, None], is_training=True
+            [global_crops, local_crops], masks=[masks, None], is_training=True, register_prompts=[register_global_prompts, register_local_prompts]
         )
 
         inputs_for_student_head_list = []

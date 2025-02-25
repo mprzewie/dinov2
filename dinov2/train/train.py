@@ -15,7 +15,7 @@ import torch
 from dinov2.data import SamplerType, make_data_loader, make_dataset
 from dinov2.data import collate_data_and_cast, DataAugmentationDINO, MaskingGenerator
 import dinov2.distributed as distributed
-from dinov2.data.adapters import encode_target
+from dinov2.data.adapters import TargetEncoder
 from dinov2.fsdp import FSDPCheckpointer
 from dinov2.logging import MetricLogger
 from dinov2.utils.config import setup
@@ -195,7 +195,9 @@ def do_train(cfg, model, resume=False):
     dataset = make_dataset(
         dataset_str=cfg.train.dataset_path,
         transform=data_transform,
-        target_transform=encode_target,
+        target_transform=TargetEncoder(
+            cfg.student.register_prompt_size
+        )
     )
 
     # sampler_type = SamplerType.INFINITE
@@ -216,7 +218,7 @@ def do_train(cfg, model, resume=False):
 
     iteration = start_iter
 
-    logger.info("Starting training from iteration {}".format(start_iter))
+    logger.info(f"Starting training from iteration {start_iter}, training until iter {max_iter}")
     metrics_file = os.path.join(cfg.train.output_dir, "training_metrics.json")
     metric_logger = MetricLogger(delimiter="  ", output_file=metrics_file)
     header = "Training"
@@ -228,9 +230,9 @@ def do_train(cfg, model, resume=False):
         max_iter,
         start_iter,
     ):
-        assert False, {
-            k: (v.shape if isinstance(v, torch.Tensor) else type(v)) for (k, v) in data.items()
-        }
+        # assert False, {
+        #     k: (v.shape if isinstance(v, torch.Tensor) else type(v)) for (k, v) in data.items()
+        # }
         current_batch_size = data["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:
             return

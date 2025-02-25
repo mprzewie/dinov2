@@ -63,6 +63,7 @@ class DinoVisionTransformer(nn.Module):
         ffn_layer="mlp",
         block_chunks=1,
         num_register_tokens=0,
+        register_prompt_size=0,
         interpolate_antialias=False,
         interpolate_offset=0.1,
     ):
@@ -112,6 +113,11 @@ class DinoVisionTransformer(nn.Module):
         self.register_tokens = (
             nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens else None
         )
+        assert register_prompt_size >= 0
+        self.register_prompt_generator = nn.Linear(
+            register_prompt_size, num_register_tokens * embed_dim,
+            bias=False
+        ) if num_register_tokens else None
 
         if drop_path_uniform is True:
             dpr = [drop_path_rate] * depth
@@ -210,7 +216,7 @@ class DinoVisionTransformer(nn.Module):
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
-    def prepare_tokens_with_masks(self, x, masks=None):
+    def prepare_tokens_with_masks(self, x, masks=None, register_prompts=None):
         B, nc, w, h = x.shape
         x = self.patch_embed(x)
         if masks is not None:
@@ -220,10 +226,14 @@ class DinoVisionTransformer(nn.Module):
         x = x + self.interpolate_pos_encoding(x, w, h)
 
         if self.register_tokens is not None:
+            register_wx = self.register_prompt_generator(register_prompts)
+            register_b =  self.register_tokens.expand(x.shape[0], -1, -1)
+            register_wx = register_wx.reshape(register_b.shape)
+            register_input = register_wx + register_b
             x = torch.cat(
                 (
                     x[:, :1],
-                    self.register_tokens.expand(x.shape[0], -1, -1),
+                    register_input,
                     x[:, 1:],
                 ),
                 dim=1,
@@ -231,8 +241,12 @@ class DinoVisionTransformer(nn.Module):
 
         return x
 
-    def forward_features_list(self, x_list, masks_list):
-        x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
+    def forward_features_list(self, x_list, masks_list, register_prompts_list):
+        x = [
+            self.prepare_tokens_with_masks(x, masks, register_prompts)
+            for x, masks, register_prompts
+            in zip(x_list, masks_list, register_prompts_list)
+        ]
         for blk in self.blocks:
             x = blk(x)
 
@@ -251,11 +265,11 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None):
+    def forward_features(self, x, masks=None, register_prompts=None):
         if isinstance(x, list):
-            return self.forward_features_list(x, masks)
+            return self.forward_features_list(x, masks, register_prompts)
 
-        x = self.prepare_tokens_with_masks(x, masks)
+        x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for blk in self.blocks:
             x = blk(x)
