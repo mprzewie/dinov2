@@ -294,7 +294,8 @@ def do_train(cfg, model, resume=False):
         if (
                 cfg.evaluation.eval_period_iterations > 0
                 and (iteration + 1) % cfg.evaluation.eval_period_iterations == 0
-        ) or (iteration + 1 >= max_iter):
+        ) or (iteration >= max_iter):
+            print("TESTING")
             do_test(cfg, model, f"training_{iteration}")
             torch.cuda.synchronize()
         periodic_checkpointer.step(iteration)
