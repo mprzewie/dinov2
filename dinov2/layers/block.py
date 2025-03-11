@@ -91,7 +91,7 @@ class Block(nn.Module):
             if not return_attention:
                 return self.ls1(self.attn(self.norm1(x)))
             elif isinstance(self.attn, Attention):
-                x, attn = self.attn(self.norm1(x))
+                x, attn = self.attn(self.norm1(x), return_attention=True)
                 x = self.ls1(x)
                 return x, attn
 
