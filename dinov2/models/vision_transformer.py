@@ -265,14 +265,17 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None, register_prompts=None):
+    def forward_features(self, x, masks=None, register_prompts=None, return_attn = False):
         if isinstance(x, list):
             return self.forward_features_list(x, masks, register_prompts)
 
         x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for blk in self.blocks:
-            x = blk(x)
+            if return_attn:
+                x, attn = blk(x, return_attn = return_attn)
+            else:
+                x = blk(x)
 
         x_norm = self.norm(x)
         return {
@@ -281,6 +284,7 @@ class DinoVisionTransformer(nn.Module):
             "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
             "x_prenorm": x,
             "masks": masks,
+            "last_attn": attn,
         }
 
     def _get_intermediate_layers_not_chunked(self, x, n=1):
