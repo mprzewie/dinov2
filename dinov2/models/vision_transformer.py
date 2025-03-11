@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
-
+from dinov2.layers.block import Block as RegularBlock
 from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
 from dinov2.layers.attention import Attention
 
@@ -278,7 +278,7 @@ class DinoVisionTransformer(nn.Module):
         x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for blk in self.blocks:
-            if return_attention:
+            if return_attention and isinstance(blk, RegularBlock):
                 x, attn = blk(x, return_attention = return_attention)
             else:
                 x = blk(x)
@@ -403,7 +403,6 @@ def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
 
 
 def vit_base_attn(patch_size=16, num_register_tokens=0, **kwargs):
-    from dinov2.layers.block import Block as RegularBlock
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
