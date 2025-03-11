@@ -35,14 +35,14 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
-    def forward(self, x, return_attn:bool=False):
+    def forward(self, x, return_attention:bool=False):
         for b in self:
-            if return_attn:
-                x, attn = b(x, return_attn=return_attn)
+            if return_attention:
+                x, attn = b(x, return_attention=return_attention)
             else:
                 x = b(x)
 
-        if return_attn:
+        if return_attention:
             return x, attn
         return x
 
@@ -271,15 +271,15 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None, register_prompts=None, return_attn = False):
+    def forward_features(self, x, masks=None, register_prompts=None, return_attention = False):
         if isinstance(x, list):
             return self.forward_features_list(x, masks, register_prompts)
 
         x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for blk in self.blocks:
-            if return_attn:
-                x, attn = blk(x, return_attn = return_attn)
+            if return_attention:
+                x, attn = blk(x, return_attention = return_attention)
             else:
                 x = blk(x)
 
