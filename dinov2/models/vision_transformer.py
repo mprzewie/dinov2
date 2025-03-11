@@ -35,9 +35,15 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
-    def forward(self, x):
+    def forward(self, x, return_attn:bool=False):
         for b in self:
-            x = b(x)
+            if return_attn:
+                x, attn = b(x, return_attn=return_attn)
+            else:
+                x = b(x)
+
+        if return_attn:
+            return x, attn
         return x
 
 
@@ -397,13 +403,14 @@ def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
 
 
 def vit_base_attn(patch_size=16, num_register_tokens=0, **kwargs):
+    from dinov2.layers.block import Block as RegularBlock
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
         depth=12,
         num_heads=12,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=Attention),
+        block_fn=partial(RegularBlock, attn_class=Attention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
