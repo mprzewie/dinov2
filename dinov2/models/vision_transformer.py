@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
-
+from dinov2.layers.block import Block as RegularBlock
 from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
 from dinov2.layers.attention import Attention
 
@@ -35,9 +35,15 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
-    def forward(self, x):
+    def forward(self, x, return_attention:bool=False):
         for b in self:
-            x = b(x)
+            if return_attention:
+                x, attn = b(x, return_attention=return_attention)
+            else:
+                x = b(x)
+
+        if return_attention:
+            return x, attn
         return x
 
 
@@ -265,14 +271,17 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None, register_prompts=None):
+    def forward_features(self, x, masks=None, register_prompts=None, return_attention = False):
         if isinstance(x, list):
             return self.forward_features_list(x, masks, register_prompts)
 
         x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for blk in self.blocks:
-            x = blk(x)
+            if return_attention and isinstance(blk, RegularBlock):
+                x, attn = blk(x, return_attention = return_attention)
+            else:
+                x = blk(x)
 
         x_norm = self.norm(x)
         return {
@@ -281,6 +290,7 @@ class DinoVisionTransformer(nn.Module):
             "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
             "x_prenorm": x,
             "masks": masks,
+            "last_attn": attn,
         }
 
     def _get_intermediate_layers_not_chunked(self, x, n=1):
@@ -390,6 +400,21 @@ def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
         **kwargs,
     )
     return model
+
+
+def vit_base_attn(patch_size=16, num_register_tokens=0, **kwargs):
+    model = DinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4,
+        block_fn=partial(RegularBlock, attn_class=Attention),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
+    return model
+
 
 
 def vit_large(patch_size=16, num_register_tokens=0, **kwargs):

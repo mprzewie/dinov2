@@ -86,9 +86,14 @@ class Block(nn.Module):
 
         self.sample_drop_ratio = drop_path
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, return_attention: bool = True) -> Tensor:
         def attn_residual_func(x: Tensor) -> Tensor:
-            return self.ls1(self.attn(self.norm1(x)))
+            if not return_attention:
+                return self.ls1(self.attn(self.norm1(x)))
+            elif isinstance(self.attn, Attention):
+                x, attn = self.attn(self.norm1(x), return_attention=True)
+                x = self.ls1(x)
+                return x, attn
 
         def ffn_residual_func(x: Tensor) -> Tensor:
             return self.ls2(self.mlp(self.norm2(x)))
@@ -109,8 +114,17 @@ class Block(nn.Module):
             x = x + self.drop_path1(attn_residual_func(x))
             x = x + self.drop_path1(ffn_residual_func(x))  # FIXME: drop_path2
         else:
-            x = x + attn_residual_func(x)
+            x_attn = attn_residual_func(x)
+            if isinstance(x_attn, Tensor):
+                xattn = x_attn
+            else:
+                xattn, attn = x_attn
+
+            x = x + xattn
             x = x + ffn_residual_func(x)
+            if return_attention:
+                return x, attn
+
         return x
 
 
