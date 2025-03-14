@@ -282,6 +282,7 @@ class DinoVisionTransformer(nn.Module):
                 x, attn = blk(x, return_attention = return_attention)
             else:
                 x = blk(x)
+                attn = None
 
         x_norm = self.norm(x)
         return {
