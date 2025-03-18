@@ -129,7 +129,11 @@ def do_test(cfg, model, iteration):
         os.makedirs(eval_dir, exist_ok=True)
         # save teacher checkpoint
         teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
-        torch.save({"teacher": new_state_dict}, teacher_ckp_path)
+        torch.save({
+            "iteration": iteration,
+            "teacher": new_state_dict
+        }, teacher_ckp_path
+        )
 
 
 def do_train(cfg, model, resume=False):
@@ -319,7 +323,7 @@ def main(args):
             .get("iteration", -1)
             + 1
         )
-        return do_test(cfg, model, f"manual_{iteration}")
+        return do_test(cfg, model, f"eval_only")
 
     do_train(cfg, model, resume=not args.no_resume)
 
