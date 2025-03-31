@@ -126,7 +126,7 @@ class DinoVisionTransformer(nn.Module):
         self.register_prompt_generator = nn.Linear(
             register_prompt_size, num_register_tokens * embed_dim,
             bias=False
-        ) if num_register_tokens else None
+        ) if (num_register_tokens > 0 and register_prompt_size > 0) else None
 
         if drop_path_uniform is True:
             dpr = [drop_path_rate] * depth
@@ -235,9 +235,13 @@ class DinoVisionTransformer(nn.Module):
         x = x + self.interpolate_pos_encoding(x, w, h)
 
         if self.register_tokens is not None:
-            register_wx = self.register_prompt_generator(register_prompts)
             register_b =  self.register_tokens.expand(x.shape[0], -1, -1)
-            register_wx = register_wx.reshape(register_b.shape)
+            if self.register_prompt_generator is not None:
+                register_wx = self.register_prompt_generator(register_prompts)
+                register_wx = register_wx.reshape(register_b.shape)
+            else:
+                register_wx = torch.zeros_like(register_b)
+
             register_input = register_wx + register_b
             x = torch.cat(
                 (
@@ -286,6 +290,7 @@ class DinoVisionTransformer(nn.Module):
                 x, attn = blk(x, return_attention = return_attention)
             else:
                 x = blk(x)
+                attn = None
 
         x_norm = self.norm(x)
         return {

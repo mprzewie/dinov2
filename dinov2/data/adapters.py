@@ -39,7 +39,7 @@ class TargetEncoder:
     def __call__(self, target) -> torch.Tensor:
         if isinstance(target, int):
             encoding = torch.zeros(self.encoding_size)
-            if target > 0 and target < self.encoding_size:
+            if target >= 0 and target < self.encoding_size:
                 encoding[target] = 1
             elif not self.warned:
                 logger.warning(

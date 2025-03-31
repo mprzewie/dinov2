@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 from fvcore.common.checkpoint import Checkpointer, PeriodicCheckpointer
+from torchvision.datasets import ImageFolder
 
 from dinov2.data import SamplerType, make_data_loader, make_dataset
 from dinov2.data.transforms import make_classification_eval_transform, make_classification_train_transform
@@ -496,7 +497,12 @@ def run_eval_linear(
         dataset_str=train_dataset_str,
         transform=train_transform,
     )
-    training_num_classes = len(torch.unique(torch.Tensor(train_dataset.get_targets().astype(int))))
+
+    if isinstance(train_dataset, ImageFolder):
+        training_num_classes = 1000
+    else:
+        training_num_classes = len(torch.unique(torch.Tensor(train_dataset.get_targets().astype(int))))
+
     sampler_type = SamplerType.SHARDED_INFINITE
     # sampler_type = SamplerType.INFINITE
 
