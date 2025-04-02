@@ -19,6 +19,7 @@ from fvcore.common.checkpoint import Checkpointer, PeriodicCheckpointer
 from torchvision.datasets import ImageFolder
 
 from dinov2.data import SamplerType, make_data_loader, make_dataset
+from dinov2.data.adapters import TargetEncoder
 from dinov2.data.transforms import make_classification_eval_transform, make_classification_train_transform
 import dinov2.distributed as distributed
 from dinov2.eval.metrics import MetricType, build_metric
@@ -26,7 +27,7 @@ from dinov2.eval.setup import get_args_parser as get_setup_args_parser
 from dinov2.eval.setup import setup_and_build_model
 from dinov2.eval.utils import ModelWithIntermediateLayers, evaluate
 from dinov2.logging import MetricLogger
-
+from dinov2.models.vision_transformer import DinoVisionTransformer
 
 logger = logging.getLogger("dinov2")
 
@@ -462,7 +463,7 @@ def test_on_datasets(
 
 
 def run_eval_linear(
-    model,
+    model: DinoVisionTransformer,
     output_dir,
     train_dataset_str,
     val_dataset_str,
@@ -496,6 +497,9 @@ def run_eval_linear(
     train_dataset = make_dataset(
         dataset_str=train_dataset_str,
         transform=train_transform,
+        target_transform=TargetEncoder(
+           encoding_size=model.register_prompt_generator.in_features
+        )
     )
 
     if isinstance(train_dataset, ImageFolder):
@@ -510,7 +514,7 @@ def run_eval_linear(
     n_last_blocks = max(n_last_blocks_list)
     autocast_ctx = partial(torch.cuda.amp.autocast, enabled=True, dtype=autocast_dtype)
     feature_model = ModelWithIntermediateLayers(model, n_last_blocks, autocast_ctx)
-    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda())
+    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda(), register_prompts=train_dataset[0][1].unsqueeze(0).cuda())
 
     linear_classifiers, optim_param_groups = setup_linear_classifiers(
         sample_output,
