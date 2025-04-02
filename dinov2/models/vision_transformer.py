@@ -302,7 +302,7 @@ class DinoVisionTransformer(nn.Module):
             "last_attn": attn,
         }
 
-    def _get_intermediate_layers_not_chunked(self, x, n=1):
+    def _get_intermediate_layers_not_chunked(self, x, n=1, register_prompts=None,):
         x = self.prepare_tokens_with_masks(x)
         # If n is an int, take the n last blocks. If it's a list, take them
         output, total_block_len = [], len(self.blocks)
@@ -314,7 +314,7 @@ class DinoVisionTransformer(nn.Module):
         assert len(output) == len(blocks_to_take), f"only {len(output)} / {len(blocks_to_take)} blocks found"
         return output
 
-    def _get_intermediate_layers_chunked(self, x, n=1):
+    def _get_intermediate_layers_chunked(self, x, n=1, register_prompts=None,):
         x = self.prepare_tokens_with_masks(x)
         output, i, total_block_len = [], 0, len(self.blocks[-1])
         # If n is an int, take the n last blocks. If it's a list, take them
@@ -335,11 +335,12 @@ class DinoVisionTransformer(nn.Module):
         reshape: bool = False,
         return_class_token: bool = False,
         norm=True,
+        register_prompts=None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
         if self.chunked_blocks:
-            outputs = self._get_intermediate_layers_chunked(x, n)
+            outputs = self._get_intermediate_layers_chunked(x, n, register_prompts=register_prompts)
         else:
-            outputs = self._get_intermediate_layers_not_chunked(x, n)
+            outputs = self._get_intermediate_layers_not_chunked(x, n, register_prompts=register_prompts)
         if norm:
             outputs = [self.norm(out) for out in outputs]
         class_tokens = [out[:, 0] for out in outputs]
