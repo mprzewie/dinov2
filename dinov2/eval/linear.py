@@ -341,7 +341,7 @@ def eval_linear(
     metric_logger = MetricLogger(delimiter="  ")
     header = "Training"
 
-    for data, labels in metric_logger.log_every(
+    for data, labels_prompts in metric_logger.log_every(
         train_data_loader,
         10,
         header,
@@ -349,9 +349,13 @@ def eval_linear(
         start_iter,
     ):
         data = data.cuda(non_blocking=True)
-        labels = labels.cuda(non_blocking=True)
 
-        features = feature_model(data)
+        labels, prompts = labels_prompts
+
+        labels = labels.cuda(non_blocking=True)
+        prompts = prompts.cuda(non_blocking=True)
+
+        features = feature_model(data, register_prompts=prompts)
         outputs = linear_classifiers(features)
 
         losses = {f"loss_{k}": nn.CrossEntropyLoss()(v, labels) for k, v in outputs.items()}
