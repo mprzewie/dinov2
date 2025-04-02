@@ -50,3 +50,10 @@ class TargetEncoder:
             raise NotImplementedError((target, type(target)))
 
         return encoding
+
+class TargetKeeperAndEncoder:
+    def __init__(self, target_encoder: TargetEncoder):
+        self.target_encoder = target_encoder
+
+    def __call__(self, target):
+        return target, self.target_encoder(target)
