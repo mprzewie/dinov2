@@ -29,6 +29,25 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key):
     state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     # remove `backbone.` prefix induced by multicrop wrapper
     state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+
+    # sd2 = dict()
+    # for k, v in state_dict.keys():
+    #     if k.startswith("blocks"):
+            
+
+    #     sd2[k] = v
+
+    # state_dict = sd2
+    # print("sd")
+    # print(state_dict.keys())
+    # print("bkb")
+    # print(model.state_dict().keys())
+    msd = model.state_dict()
+
+    in_model_but_not_in_sd = [k for k in msd.keys() if k not in state_dict.keys()]
+
+    assert len(in_model_but_not_in_sd) == 0, in_model_but_not_in_sd
+    
     msg = model.load_state_dict(state_dict, strict=False)
     logger.info("Pretrained weights found at {} and loaded with msg: {}".format(pretrained_weights, msg))
 
