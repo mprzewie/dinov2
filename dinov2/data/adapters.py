@@ -54,7 +54,7 @@ class TargetEncoder:
 
 class RandomEncoder(TargetEncoder):
     def __call__(self, target) -> torch.Tensor:
-        target = randint(0, self.encoding_size)
+        target = randint(0, self.encoding_size-1)
         encoding = torch.zeros(self.encoding_size)
         encoding[target] = 1
         return encoding
