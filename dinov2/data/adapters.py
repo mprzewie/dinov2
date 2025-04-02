@@ -3,6 +3,7 @@
 # This source code is licensed under the Apache License, Version 2.0
 # found in the LICENSE file in the root directory of this source tree.
 import logging
+from random import random, randint
 from typing import Any, Tuple
 
 import torch
@@ -49,6 +50,13 @@ class TargetEncoder:
         else:
             raise NotImplementedError((target, type(target)))
 
+        return encoding
+
+class RandomEncoder(TargetEncoder):
+    def __call__(self, target) -> torch.Tensor:
+        target = randint(0, self.encoding_size)
+        encoding = torch.zeros(self.encoding_size)
+        encoding[target] = 1
         return encoding
 
 class TargetKeeperAndEncoder:

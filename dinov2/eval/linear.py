@@ -19,7 +19,7 @@ from fvcore.common.checkpoint import Checkpointer, PeriodicCheckpointer
 from torchvision.datasets import ImageFolder
 
 from dinov2.data import SamplerType, make_data_loader, make_dataset
-from dinov2.data.adapters import TargetEncoder, TargetKeeperAndEncoder
+from dinov2.data.adapters import TargetEncoder, TargetKeeperAndEncoder, RandomEncoder
 from dinov2.data.transforms import make_classification_eval_transform, make_classification_train_transform
 import dinov2.distributed as distributed
 from dinov2.eval.metrics import MetricType, build_metric
@@ -134,6 +134,16 @@ def get_args_parser(
         type=str,
         help="Path to a file containing a mapping to adjust classifier outputs",
     )
+    parser.add_argument(
+        "--train-target-encoder",
+        type=str,
+        choices=["target", "random"]
+    )
+    parser.add_argument(
+        "--val-target-encoder",
+        type=str,
+        choices=["target", "random"]
+    )
     parser.set_defaults(
         train_dataset_str="ImageNet:split=TRAIN",
         val_dataset_str="ImageNet:split=VAL",
@@ -150,6 +160,8 @@ def get_args_parser(
         classifier_fpath=None,
         val_class_mapping_fpath=None,
         test_class_mapping_fpaths=[None],
+        train_target_encoder="target",
+        val_target_encoder="target",
     )
     return parser
 
@@ -314,7 +326,7 @@ def evaluate_linear_classifiers(
 
 def eval_linear(
     *,
-    feature_model,
+    feature_model: ModelWithIntermediateLayers,
     linear_classifiers,
     train_data_loader,
     val_data_loader,
@@ -414,10 +426,16 @@ def eval_linear(
     return val_results_dict, feature_model, linear_classifiers, iteration
 
 
-def make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type):
+def make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type, register_prompt_encoding_size: int, target_encoder: str):
+    TE_CLS = TargetEncoder if target_encoder == "target" else RandomEncoder
     test_dataset = make_dataset(
         dataset_str=test_dataset_str,
         transform=make_classification_eval_transform(),
+        target_transform=TargetKeeperAndEncoder(
+            TE_CLS(
+                encoding_size=register_prompt_encoding_size
+            )
+        )
     )
     test_data_loader = make_data_loader(
         dataset=test_dataset,
@@ -433,7 +451,7 @@ def make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type
 
 
 def test_on_datasets(
-    feature_model,
+    feature_model: ModelWithIntermediateLayers,
     linear_classifiers,
     test_dataset_strs,
     batch_size,
@@ -445,11 +463,16 @@ def test_on_datasets(
     best_classifier_on_val,
     prefixstring="",
     test_class_mappings=[None],
+    target_encoder="target",
 ):
     results_dict = {}
     for test_dataset_str, class_mapping, metric_type in zip(test_dataset_strs, test_class_mappings, test_metric_types):
         logger.info(f"Testing on {test_dataset_str}")
-        test_data_loader = make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type)
+        test_data_loader = make_eval_data_loader(
+            test_dataset_str, batch_size, num_workers, metric_type,
+            register_prompt_encoding_size=feature_model.feature_model.register_prompt_generator.in_features,
+            target_encoder=target_encoder,
+        )
         dataset_results_dict = evaluate_linear_classifiers(
             feature_model,
             remove_ddp_wrapper(linear_classifiers),
@@ -486,6 +509,8 @@ def run_eval_linear(
     test_class_mapping_fpaths=[None],
     val_metric_type=MetricType.MEAN_ACCURACY,
     test_metric_types=None,
+    train_target_encoder: str = "target",
+    val_target_encoder: str = "target",
 ):
     seed = 0
 
@@ -498,11 +523,13 @@ def run_eval_linear(
     assert len(test_dataset_strs) == len(test_class_mapping_fpaths)
 
     train_transform = make_classification_train_transform()
+    TRAIN_TE_CLS = TargetEncoder if train_target_encoder == "target" else RandomEncoder
+
     train_dataset = make_dataset(
         dataset_str=train_dataset_str,
         transform=train_transform,
         target_transform=TargetKeeperAndEncoder(
-            TargetEncoder(
+           TRAIN_TE_CLS(
                 encoding_size=model.register_prompt_generator.in_features
             )
         )
@@ -546,7 +573,11 @@ def run_eval_linear(
         drop_last=True,
         persistent_workers=True,
     )
-    val_data_loader = make_eval_data_loader(val_dataset_str, batch_size, num_workers, val_metric_type)
+    val_data_loader = make_eval_data_loader(
+        val_dataset_str, batch_size, num_workers, val_metric_type,
+        register_prompt_encoding_size=feature_model.feature_model.register_prompt_generator.in_features,
+        target_encoder=val_target_encoder,
+    )
 
     checkpoint_period = save_checkpoint_frequency * epoch_length
 
@@ -600,6 +631,7 @@ def run_eval_linear(
             val_results_dict["best_classifier"]["name"],
             prefixstring="",
             test_class_mappings=test_class_mappings,
+            target_encoder=val_target_encoder
         )
     results_dict["best_classifier"] = val_results_dict["best_classifier"]["name"]
     results_dict[f"{val_dataset_str}_accuracy"] = 100.0 * val_results_dict["best_classifier"]["accuracy"]
@@ -630,6 +662,8 @@ def main(args):
         test_metric_types=args.test_metric_types,
         val_class_mapping_fpath=args.val_class_mapping_fpath,
         test_class_mapping_fpaths=args.test_class_mapping_fpaths,
+        train_target_encoder=args.train_target_encoder,
+        val_target_encoder=args.val_target_encoder,
     )
     return 0
 

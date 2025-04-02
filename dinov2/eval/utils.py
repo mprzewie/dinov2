@@ -64,7 +64,10 @@ def evaluate(
     header = "Test:"
 
     for samples, targets, *_ in metric_logger.log_every(data_loader, 10, header):
-        outputs = model(samples.to(device))
+        if isinstance(targets, list):
+            targets, prompts = targets
+            outputs = model(samples.to(device), register_prompts=prompts)
+
         targets = targets.to(device)
 
         if criterion is not None:
