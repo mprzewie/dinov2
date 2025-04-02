@@ -303,7 +303,7 @@ class DinoVisionTransformer(nn.Module):
         }
 
     def _get_intermediate_layers_not_chunked(self, x, n=1, register_prompts=None,):
-        x = self.prepare_tokens_with_masks(x)
+        x = self.prepare_tokens_with_masks(x, register_prompts=register_prompts)
         # If n is an int, take the n last blocks. If it's a list, take them
         output, total_block_len = [], len(self.blocks)
         blocks_to_take = range(total_block_len - n, total_block_len) if isinstance(n, int) else n
@@ -315,7 +315,7 @@ class DinoVisionTransformer(nn.Module):
         return output
 
     def _get_intermediate_layers_chunked(self, x, n=1, register_prompts=None,):
-        x = self.prepare_tokens_with_masks(x)
+        x = self.prepare_tokens_with_masks(x, register_prompts=register_prompts)
         output, i, total_block_len = [], 0, len(self.blocks[-1])
         # If n is an int, take the n last blocks. If it's a list, take them
         blocks_to_take = range(total_block_len - n, total_block_len) if isinstance(n, int) else n
