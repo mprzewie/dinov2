@@ -311,7 +311,7 @@ class OrthogonalLinear(nn.Module):
         device = self.r.device
 
         # Step 1: Construct Skew-Symmetric Rotation Matrices for Each Chunk
-        R = torch.zeros((N, N), device=device)  # Shape: (K, N, N)
+        R = torch.zeros((N, N), device=device, dtype=self.r.dtype)  # Shape: (K, N, N)
 
         # Correctly assign N-1 parameters per chunk to ensure skew-symmetry
         indices = torch.arange(1, N, device=device)
@@ -327,7 +327,7 @@ class OrthogonalLinear(nn.Module):
         theta = self.r.norm() + 1e-8
         A = R / theta
         Q_rot2 = (
-                torch.eye(R.shape[0], device=R.device)
+                torch.eye(R.shape[0], device=R.device, dtype=R.dtype)
                 + torch.sin(theta) * A
                 + (1 - torch.cos(theta)) * (A @ A)
         )
@@ -336,9 +336,9 @@ class OrthogonalLinear(nn.Module):
 
 
         # Step 2: Compute Householder Reflection (Fixing e1 -> v1)
-        v_full = torch.cat([torch.tensor([1.0], device=device), self.v])  # Extend to full size
+        v_full = torch.cat([torch.tensor([1.0], device=device, dtype=self.v.dtype), self.v])  # Extend to full size
         v_full = v_full / v_full.norm()  # Normalize to be a unit vector
-        H = torch.eye(N, device=device) - 2 * torch.outer(v_full, v_full)  # Householder matrix
+        H = torch.eye(N, device=device, dtype=v_full.dtype) - 2 * torch.outer(v_full, v_full)  # Householder matrix
 
         # Step 3: Apply Householder Reflection After Rotation
         W = H @ Q_rotated
