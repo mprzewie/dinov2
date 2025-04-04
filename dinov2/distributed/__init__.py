@@ -125,7 +125,7 @@ def _is_slurm_job_process() -> bool:
     return "SLURM_JOB_ID" in os.environ
 
 
-def parse_slurm_node_list(s: str) -> List[str]:
+def _parse_slurm_node_list(s: str) -> List[str]:
     nodes = []
     p = re.compile(r"([^\[,]+)(?:\[([^\]]+)\])?,?")
     for m in p.finditer(s):
