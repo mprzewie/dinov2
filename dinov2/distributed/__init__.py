@@ -183,7 +183,7 @@ class _TorchDistributedEnvironment:
         job_id = int(os.environ["SLURM_JOB_ID"])
         node_count = int(os.environ["SLURM_JOB_NUM_NODES"])
         nodes = _parse_slurm_node_list(os.environ["SLURM_JOB_NODELIST"])
-        assert len(nodes) == node_count
+        assert len(nodes) == node_count, (nodes, node_count)
 
         self.master_addr = nodes[0]
         self.master_port = _get_master_port(seed=job_id)
