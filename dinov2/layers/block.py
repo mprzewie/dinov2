@@ -419,7 +419,7 @@ class OrtoBlock(NestedTensorBlock):
             attn_class: Callable[..., nn.Module] = Attention,
             ffn_layer: Callable[..., nn.Module] = Mlp,
             orto_reflections: int = 0,
-            apply_to: str = APPLY_TO_ALL
+            orto_apply_to: str = APPLY_TO_ALL
     ):
         super().__init__(
             dim=dim,
@@ -439,6 +439,6 @@ class OrtoBlock(NestedTensorBlock):
             # mlp_layer=mlp_layer
         )
         self.attn = OrtoAttention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, proj_bias=proj_bias, attn_drop=attn_drop, proj_drop=drop, orto_reflections=orto_reflections, apply_to=apply_to)
-        if "r" in apply_to:
+            dim, num_heads=num_heads, qkv_bias=qkv_bias, proj_bias=proj_bias, attn_drop=attn_drop, proj_drop=drop, orto_reflections=orto_reflections, apply_to=orto_apply_to)
+        if "r" in orto_apply_to:
             self.mlp = OrtoMlp(in_features=dim, hidden_features=int(dim * mlp_ratio), act_layer=act_layer, drop=drop, orto_reflections=orto_reflections)

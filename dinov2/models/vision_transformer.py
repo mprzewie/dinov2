@@ -165,7 +165,7 @@ class DinoVisionTransformer(nn.Module):
                 ffn_layer=ffn_layer,
                 init_values=init_values,
                 orto_reflections=orto_reflections,
-                apply_to_all=orto_apply_to,
+                orto_apply_to=orto_apply_to,
             )
             for i in range(depth)
         ]
