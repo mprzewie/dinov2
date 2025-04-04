@@ -23,6 +23,7 @@ from .mlp import Mlp
 
 logger = logging.getLogger("dinov2")
 
+APPLY_TO_ALL = "qkvpr1r2"
 
 XFORMERS_ENABLED = os.environ.get("XFORMERS_DISABLED") is None
 try:
@@ -272,3 +273,172 @@ class NestedTensorBlock(Block):
             return self.forward_nested(x_or_x_list)
         else:
             raise AssertionError
+
+
+class OrthogonalLinear(nn.Module):
+    def __init__(self, in_features, out_features, bias=True, num_reflections=1):
+        super().__init__()
+        # assert in_features == out_features
+        # features = in_features
+        self.in_features = in_features
+        self.out_features = out_features
+
+        features = max(in_features, out_features)
+
+        # self.num_chunks = num_reflections
+        assert num_reflections == 1
+
+        # Householder vector (N-1 parameters)
+        self.v = nn.Parameter(torch.randn(features - 1))
+
+        # Rotation vectors for each chunk (num_chunks x (N-1))
+        self.r = nn.Parameter(torch.randn(features - 1) * 0.1)
+        # self.register_buffer("r", torch.zeros(features - 1))
+
+        # Modulation vector (N parameters)
+        self.m = nn.Parameter(torch.ones(out_features))
+
+
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.register_parameter('bias', None)
+
+    def construct_W(self):
+        """Fully vectorized construction of K orthogonal matrices, outputting only the necessary rows."""
+        N = max(self.in_features, self.out_features)
+        # chunk_size = N // self.num_chunks  # Each chunk contributes this many rows
+        device = self.r.device
+
+        # Step 1: Construct Skew-Symmetric Rotation Matrices for Each Chunk
+        R = torch.zeros((N, N), device=device)  # Shape: (K, N, N)
+
+        # Correctly assign N-1 parameters per chunk to ensure skew-symmetry
+        indices = torch.arange(1, N, device=device)
+
+        # Fix: Now `self.r` is of shape (K, N-1) to allow independent rotations per chunk
+        R[0, indices] = self.r  # Rotate e2,...,eN around e1 for each chunk
+        R[indices, 0] = -self.r  # Ensure skew-symmetry
+
+        # # Compute full batch of orthogonal rotation matrices
+        # Q_rotated = torch.matrix_exp(R)  # Shape: (K, N, N)
+
+        # Rodrigues' Formula
+        theta = self.r.norm() + 1e-8
+        A = R / theta
+        Q_rot2 = (
+                torch.eye(R.shape[0], device=R.device)
+                + torch.sin(theta) * A
+                + (1 - torch.cos(theta)) * (A @ A)
+        )
+        Q_rotated = Q_rot2
+        # assert torch.allclose(Q_rotated, Q_rot2, rtol=1e-4), (Q_rotated - Q_rot2).abs().max()
+
+
+        # Step 2: Compute Householder Reflection (Fixing e1 -> v1)
+        v_full = torch.cat([torch.tensor([1.0], device=device), self.v])  # Extend to full size
+        v_full = v_full / v_full.norm()  # Normalize to be a unit vector
+        H = torch.eye(N, device=device) - 2 * torch.outer(v_full, v_full)  # Householder matrix
+
+        # Step 3: Apply Householder Reflection After Rotation
+        W = H @ Q_rotated
+
+        # Step 6: Cut out the relevant part of constructed W
+        W = W[:self.out_features, :self.in_features]
+
+        # Step 7: Apply Modulation
+        W = W * self.m.unsqueeze(1)  # Apply modulation
+
+        return W
+
+    def forward(self, x):
+        W = self.construct_W()
+        return torch.nn.functional.linear(x, W, self.bias)
+
+class QKV(torch.nn.Module):
+    def __init__(self, dim: int, bias: bool=True, num_reflections: int=1, apply_to: str = APPLY_TO_ALL):
+        super().__init__()
+        self.q = OrthogonalLinear(dim, dim, bias=bias, num_reflections=num_reflections)  if "q" in apply_to else nn.Linear(dim, dim, bias=bias)
+        self.k = OrthogonalLinear(dim, dim, bias=bias, num_reflections=num_reflections)  if "k" in apply_to else nn.Linear(dim, dim, bias=bias)
+        self.v = OrthogonalLinear(dim, dim, bias=bias, num_reflections=num_reflections)  if "v" in apply_to else nn.Linear(dim, dim, bias=bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        q = self.q(x)
+        k = self.k(x)
+        v = self.v(x)
+        return torch.cat([q,k,v], dim=-1)
+
+
+class OrtoAttention(MemEffAttention):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, proj_bias: bool = True,  proj_drop=0., attn_drop=0., orto_reflections: int = 0, apply_to: str = APPLY_TO_ALL):
+        super().__init__(dim=dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=proj_drop)
+        if orto_reflections > 0:
+            self.qkv = QKV(dim, bias=qkv_bias, num_reflections=orto_reflections, apply_to=apply_to)
+            if "p" in apply_to:
+                self.proj = OrthogonalLinear(dim, dim, num_reflections=orto_reflections, bias=proj_bias)
+
+
+class OrtoMlp(Mlp):
+    """ MLP as used in Vision Transformer, MLP-Mixer and related networks
+    """
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, bias=True, drop=0., orto_reflections: int = 0, apply_to: str="r1r2"):
+        super().__init__(
+            in_features=in_features,
+            hidden_features=hidden_features,
+            out_features=out_features,
+            act_layer=act_layer,
+            bias=bias,
+            drop=drop,
+        )
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        # bias = to_2tuple(bias)
+
+        if orto_reflections > 0:
+            if "r1" in apply_to:
+                self.fc1 = OrthogonalLinear(in_features, hidden_features, bias=bias, num_reflections=orto_reflections)
+            if "r2" in apply_to:
+                self.fc2 = OrthogonalLinear(hidden_features, out_features, bias=bias, num_reflections=orto_reflections)
+
+
+class OrtoBlock(NestedTensorBlock):
+    def __init__(
+            self,
+            dim: int,
+            num_heads: int,
+            mlp_ratio: float = 4.0,
+            qkv_bias: bool = False,
+            proj_bias: bool = True,
+            ffn_bias: bool = True,
+            drop: float = 0.0,
+            attn_drop: float = 0.0,
+            init_values=None,
+            drop_path: float = 0.0,
+            act_layer: Callable[..., nn.Module] = nn.GELU,
+            norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
+            attn_class: Callable[..., nn.Module] = Attention,
+            ffn_layer: Callable[..., nn.Module] = Mlp,
+            orto_reflections: int = 0,
+            apply_to: str = APPLY_TO_ALL
+    ):
+        super().__init__(
+            dim=dim,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            proj_bias=proj_bias,
+            ffn_bias=ffn_bias,
+            drop=drop,
+            attn_drop=attn_drop,
+            init_values=init_values,
+            drop_path=drop_path,
+            act_layer=act_layer,
+            norm_layer=norm_layer,
+            attn_class=attn_class,
+            ffn_layer=ffn_layer,
+            # mlp_layer=mlp_layer
+        )
+        self.attn = OrtoAttention(
+            dim, num_heads=num_heads, qkv_bias=qkv_bias, proj_bias=proj_bias, attn_drop=attn_drop, proj_drop=drop, orto_reflections=orto_reflections, apply_to=apply_to)
+        if "r" in apply_to:
+            self.mlp = OrtoMlp(in_features=dim, hidden_features=int(dim * mlp_ratio), act_layer=act_layer, drop=drop, orto_reflections=orto_reflections)

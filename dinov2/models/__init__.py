@@ -27,6 +27,8 @@ def build_model(args, only_teacher=False, img_size=224):
             interpolate_offset=args.interpolate_offset,
             interpolate_antialias=args.interpolate_antialias,
             register_prompt_size=args.register_prompt_size,
+            orto_reflections=args.orto_reflections,
+            orto_apply=args.orto_apply_to,
         )
         teacher = vits.__dict__[args.arch](**vit_kwargs)
         if only_teacher:

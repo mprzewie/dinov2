@@ -16,8 +16,8 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
-from dinov2.layers.block import Block as RegularBlock
-from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
+from dinov2.layers.block import Block as RegularBlock, APPLY_TO_ALL
+from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, OrtoBlock as Block #NestedTensorBlock as Block
 from dinov2.layers.attention import Attention
 
 logger = logging.getLogger("dinov2")
@@ -75,6 +75,8 @@ class DinoVisionTransformer(nn.Module):
         register_prompt_size=0,
         interpolate_antialias=False,
         interpolate_offset=0.1,
+        orto_reflections: int = 0,
+        orto_apply_to: str = APPLY_TO_ALL,
     ):
         """
         Args:
@@ -162,6 +164,8 @@ class DinoVisionTransformer(nn.Module):
                 act_layer=act_layer,
                 ffn_layer=ffn_layer,
                 init_values=init_values,
+                orto_reflections=orto_reflections,
+                apply_to_all=orto_apply_to,
             )
             for i in range(depth)
         ]
