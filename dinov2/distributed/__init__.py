@@ -125,20 +125,23 @@ def _is_slurm_job_process() -> bool:
     return "SLURM_JOB_ID" in os.environ
 
 
-def _parse_slurm_node_list(s: str) -> List[str]:
+def parse_slurm_node_list(s: str) -> List[str]:
     nodes = []
-    # Extract "hostname", "hostname[1-2,3,4-5]," substrings
-    p = re.compile(r"(([^\[]+)(?:\[([^\]]+)\])?),?")
+    p = re.compile(r"([^\[,]+)(?:\[([^\]]+)\])?,?")
     for m in p.finditer(s):
-        prefix, suffixes = s[m.start(2) : m.end(2)], s[m.start(3) : m.end(3)]
-        for suffix in suffixes.split(","):
-            span = suffix.split("-")
-            if len(span) == 1:
-                nodes.append(prefix + suffix)
-            else:
-                width = len(span[0])
-                start, end = int(span[0]), int(span[1]) + 1
-                nodes.extend([prefix + f"{i:0{width}}" for i in range(start, end)])
+        prefix = m.group(1)
+        suffixes = m.group(2)
+        if suffixes:
+            for suffix in suffixes.split(","):
+                span = suffix.split("-")
+                if len(span) == 1:
+                    nodes.append(prefix + suffix)
+                else:
+                    width = len(span[0])
+                    start, end = int(span[0]), int(span[1]) + 1
+                    nodes.extend([prefix + f"{i:0{width}}" for i in range(start, end)])
+        else:
+            nodes.append(prefix)  # If no brackets, add the prefix as is
     return nodes
 
 
