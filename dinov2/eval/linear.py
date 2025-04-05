@@ -530,7 +530,7 @@ def run_eval_linear(
         transform=train_transform,
         target_transform=TargetKeeperAndEncoder(
            TRAIN_TE_CLS(
-                encoding_size=model.register_prompt_generator.in_features
+                encoding_size=model.register_prompt_generator.in_features if model.register_prompt_generator is not None else 0
             )
         )
     )
@@ -575,7 +575,7 @@ def run_eval_linear(
     )
     val_data_loader = make_eval_data_loader(
         val_dataset_str, batch_size, num_workers, val_metric_type,
-        register_prompt_encoding_size=feature_model.feature_model.register_prompt_generator.in_features,
+        register_prompt_encoding_size=model.register_prompt_generator.in_features if model.register_prompt_generator is not None else 0,
         target_encoder=val_target_encoder,
     )
 
