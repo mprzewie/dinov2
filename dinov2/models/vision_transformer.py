@@ -39,7 +39,7 @@ class BlockChunk(nn.ModuleList):
     def forward(self, x, return_attention:bool=False):
         for i, b in enumerate(self):
             # print("c", i, type(b), isinstance(b, RegularBlock), type(x))
-            if return_attention and isinstance(b, Block):
+            if isinstance(b, Block):
                 x, attn = b(x)
                 # print("xa", x.shape, attn.shape)
             else:
@@ -297,11 +297,11 @@ class DinoVisionTransformer(nn.Module):
 
         for i, blk in enumerate(self.blocks):
             # print(i, return_attention, type(blk))
-            if return_attention:   
-                x, attn = blk(x, return_attention = return_attention)
-            else:
-                x = blk(x)
-                attn = None
+            # if return_attention:
+            x, attn = blk(x)
+            # else:
+            #     x = blk(x)
+            #     attn = None
 
         x_norm = self.norm(x)
         # assert False, type(attn)
