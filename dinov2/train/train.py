@@ -200,7 +200,8 @@ def do_train(cfg, model, resume=False):
         dataset_str=cfg.train.dataset_path,
         transform=data_transform,
         target_transform=TargetEncoder(
-            cfg.student.register_prompt_size
+            encoding_size=cfg.student.register_prompt_size,
+            num_negatives=cfg.student.num_negative_prompts,
         )
     )
 

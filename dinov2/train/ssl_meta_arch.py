@@ -7,6 +7,7 @@ from functools import partial
 import logging
 
 import torch
+from einops import einsum
 from torch import nn
 
 from dinov2.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss
@@ -17,7 +18,7 @@ from dinov2.utils.param_groups import get_params_groups_with_decay, fuse_params_
 from dinov2.fsdp import get_fsdp_wrapper, ShardedGradScaler, get_fsdp_modules, reshard_fsdp_model
 
 from dinov2.models.vision_transformer import BlockChunk
-
+import torch.nn.functional as F
 
 try:
     from xformers.ops import fmha
@@ -110,6 +111,7 @@ class SSLMetaArch(nn.Module):
             else:
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
 
+        self.register_contrastive_loss_weight = cfg.student.register_contrastive_loss_weight
         self.need_to_synchronize_fsdp_streams = True
 
         self.student = nn.ModuleDict(student_model_dict)
@@ -144,7 +146,9 @@ class SSLMetaArch(nn.Module):
         upperbound = images["upperbound"]
         masks_weight = images["masks_weight"].cuda(non_blocking=True)
         register_global_prompts = images["collated_global_labels"].cuda(non_blocking=True)
+        register_global_negatives = images["collated_global_negatives"].cuda(non_blocking=True)
         register_local_prompts = images["collated_local_labels"].cuda(non_blocking=True)
+
 
         n_local_crops_loss_terms = max(n_local_crops * n_global_crops, 1)
         n_global_crops_loss_terms = (n_global_crops - 1) * n_global_crops
@@ -159,7 +163,11 @@ class SSLMetaArch(nn.Module):
         @torch.no_grad()
         def get_teacher_output():
             x, n_global_crops_teacher = global_crops, n_global_crops
-            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=register_global_prompts)
+
+            # assert False, (register_global_prompts.shape, register_global_negatives.shape)
+            teacher_register_input = torch.cat([register_global_prompts.unsqueeze(1), register_global_negatives], dim=1)
+            # print("TEACHER")
+            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=teacher_register_input, return_attention=True)
             teacher_cls_tokens = teacher_backbone_output_dict["x_norm_clstoken"]
             teacher_cls_tokens = teacher_cls_tokens.chunk(n_global_crops_teacher)
             # watch out: these are chunked and cat'd in reverse so A is matched to B in the global crops dino loss
@@ -226,17 +234,52 @@ class SSLMetaArch(nn.Module):
             else:
                 raise NotImplementedError
 
-            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered
+            if teacher_backbone_output_dict["last_attn"] is not None:
 
-        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered = get_teacher_output()
+                reg_end = 1 + (self.cfg.student.num_register_tokens * teacher_register_input.shape[1])
+                register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+                # mean along the head dim
+
+                patches = teacher_backbone_output_dict["x_norm_patchtokens"]
+
+                teacher_patch_reg_representations = einsum(
+                    register_patch_mean_attn,
+                    patches,
+                    "b r p, b p e -> b r e"
+                )
+                                # from einops import einsum
+                # assert False, (register_patch_mean_attn.shape, patches.shape, patch_reg_representations.shape)
+
+            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_patch_reg_representations
+
+        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_patch_reg_representations = get_teacher_output()
         reshard_fsdp_model(self.teacher)
 
         loss_dict = {}
 
         loss_accumulator = 0  # for backprop
-        student_global_backbone_output_dict, student_local_backbone_output_dict = self.student.backbone(
-            [global_crops, local_crops], masks=[masks, None], is_training=True, register_prompts=[register_global_prompts, register_local_prompts]
+
+        # print("STUDENT GLOBAL")
+        student_global_backbone_output_dict = self.student.backbone(
+            global_crops, masks=masks, is_training=True, register_prompts=register_global_prompts, return_attention=True
         )
+
+        # assert False, local_
+        # crops.shape
+        # print("STUDENT LOCAL")
+        student_local_backbone_output_dict = self.student.backbone(
+            local_crops, masks=None, is_training=True, register_prompts=register_local_prompts, return_attention=True
+        )
+
+        # student_global_backbone_output_dict, student_local_backbone_output_dict = self.student.backbone(
+        #     [global_crops, local_crops], masks=[masks, None], is_training=True, register_prompts=[register_global_prompts, register_local_prompts]
+        # )
+
+        # assert False, {
+        #     k: (v.shape if isinstance(v, torch.Tensor) else type(v))
+        #     for (k,v) in student_global_backbone_output_dict.items()
+        # }
+        # assert False, teacher_backbone_output_dict.keys()
 
         inputs_for_student_head_list = []
 
@@ -321,6 +364,58 @@ class SSLMetaArch(nn.Module):
                     koleo_loss / loss_scales
                 )  # this is to display the same losses as before but we can remove eventually
 
+        if self.register_contrastive_loss_weight > 0:
+            # assert False, teacher_patch_reg_representations.shape
+            # B, 1+r_neg, E = teacher_patch_reg_representations.shape
+            reg_end = 1 + (self.cfg.student.num_register_tokens)
+            student_register_mean_attn = student_local_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+            # assert False, student_register_mean_attn.shape
+            # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+            # mean along the head dim
+
+            student_local_patches = student_local_backbone_output_dict["x_norm_patchtokens"]
+
+            # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  teacher_patch_reg_representations]]
+
+            student_local_patch_reg_representations = einsum(
+                student_register_mean_attn,
+                student_local_patches,
+                "b r p, b p e -> b r e"
+            )
+
+            teacher_patch_reg_representations_norm = F.normalize(teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_global_crops)
+            student_local_patch_reg_representations_norm = F.normalize(student_local_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_local_crops)
+
+            contr_loss_agg = 0
+            for tr in teacher_patch_reg_representations_norm:
+                for sr in student_local_patch_reg_representations_norm:
+                    cont_map = einsum(sr, tr, "b sr e, b tr e -> b sr tr")
+                    b, srn, trn = cont_map.shape
+                    assert srn == 1, cont_map.shape
+                    cont_map = cont_map.squeeze()
+                    assert cont_map.shape == (b, trn)
+                    labels = torch.zeros(len(cont_map), dtype=torch.long).to(cont_map.device)
+                    cont_loss = F.cross_entropy(cont_map, labels)
+                    contr_loss_agg += cont_loss
+
+                    # assert False, [tr.shape, sr.shape, cont_map.shape]
+            loss_dict["semantic_register_contrastive_loss"] = contr_loss_agg
+            loss_accumulator += contr_loss_agg * self.register_contrastive_loss_weight
+
+            # print(register_global_prompts)
+            #
+            # print(register_local_prompts)
+            #
+            # assert False, [[t_.shape for t_ in t] for t in [teacher_patch_reg_representations_norm, student_local_patch_reg_representations_norm]]
+            #
+            # assert False, [t.shape for t in [student_local_patch_reg_representations_norm, teacher_patch_reg_representations_norm]]
+            # inter_sample_contrastive = einsum(
+            #     student_local_patch_reg_representations_norm,
+            #     teacher_patch_reg_representations_norm,
+            #     "sb sr e"
+            # )
+
+            # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  student_local_patch_reg_representations, teacher_patch_reg_representations]]
         if do_ibot:
             # compute loss
             ibot_patch_loss = (
