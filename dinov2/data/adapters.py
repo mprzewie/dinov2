@@ -40,9 +40,9 @@ class TargetEncoder:
 
     def __call__(self, target) -> Tuple[torch.Tensor, torch.Tensor]:
         if isinstance(target, int):
-            postive = torch.zeros(self.encoding_size)
+            positive = torch.zeros(self.encoding_size)
             if target >= 0 and target < self.encoding_size:
-                postive[target] = 1
+                positive[target] = 1
             elif not self.warned:
                 logger.warning(
                     f"Target {target} is out of bounds for encoding size {self.encoding_size}"
@@ -60,7 +60,7 @@ class TargetEncoder:
         else:
             raise NotImplementedError((target, type(target)))
 
-        return postive, torch.stack(negatives)
+        return positive, (torch.stack(negatives) if len(negatives) > 0 else torch.zeros(0, self.encoding_size))
 
 class RandomEncoder(TargetEncoder):
     def __call__(self, target) -> torch.Tensor:

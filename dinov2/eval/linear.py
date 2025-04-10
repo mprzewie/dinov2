@@ -362,7 +362,7 @@ def eval_linear(
     ):
         data = data.cuda(non_blocking=True)
 
-        labels, prompts = labels_prompts
+        labels, (prompts, _) = labels_prompts
 
         labels = labels.cuda(non_blocking=True)
         prompts = prompts.cuda(non_blocking=True)
