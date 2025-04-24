@@ -234,9 +234,16 @@ class SSLMetaArch(nn.Module):
         loss_dict = {}
 
         loss_accumulator = 0  # for backprop
-        student_global_backbone_output_dict, student_local_backbone_output_dict = self.student.backbone(
-            [global_crops, local_crops], masks=[masks, None], is_training=True, register_prompts=[register_global_prompts, register_local_prompts]
+        student_global_backbone_output_dict = self.student.backbone(
+            global_crops, masks=masks, is_training=True, register_prompts=register_global_prompts
         )
+
+        student_local_backbone_output_dict = self.student.backbone(
+            local_crops, masks=None, is_training=True, register_prompts=register_local_prompts
+        )
+        # student_global_backbone_output_dict, student_local_backbone_output_dict = self.student.backbone(
+        #     [global_crops, local_crops], masks=[masks, None], is_training=True, register_prompts=[register_global_prompts, register_local_prompts]
+        # )
 
         # print(global_crops.shape, local_crops.shape)
         # print({
