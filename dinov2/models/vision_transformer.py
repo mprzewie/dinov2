@@ -35,19 +35,15 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
-    def forward(self, x, return_attention:bool=False):
+    def forward(self, x):
         for i, b in enumerate(self):
-            # print("c", i, type(b), isinstance(b, RegularBlock), type(x))
-            if return_attention and isinstance(b, RegularBlock):   
-                x, attn = b(x, return_attention=return_attention)
-                # print("xa", x.shape, attn.shape)
+            if isinstance(b, RegularBlock):
+                # print(i, type(b), [x_.shape for x_ in x] if isinstance(x, list) else x.shape)
+                x, attn = b(x)
             else:
                 x = b(x)
-                # print("x", x.shape)
 
-        if return_attention:
-            return x, attn
-        return x
+        return x, attn
 
 
 class DinoVisionTransformer(nn.Module):
@@ -132,6 +128,10 @@ class DinoVisionTransformer(nn.Module):
             dpr = [drop_path_rate] * depth
         else:
             dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+
+        print("Fixing the final block drop rate to 0")
+        dpr[-1] = 0
+
 
         if ffn_layer == "mlp":
             logger.info("using MLP layer as FFN")
@@ -261,7 +261,7 @@ class DinoVisionTransformer(nn.Module):
             in zip(x_list, masks_list, register_prompts_list)
         ]
         for blk in self.blocks:
-            x = blk(x)
+            x, attn = blk(x)
 
         all_x = x
         output = []
@@ -274,11 +274,12 @@ class DinoVisionTransformer(nn.Module):
                     "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
                     "x_prenorm": x,
                     "masks": masks,
+                    "last_attn": attn,
                 }
             )
         return output
 
-    def forward_features(self, x, masks=None, register_prompts=None, return_attention = False):
+    def forward_features(self, x, masks=None, register_prompts=None):
         if isinstance(x, list):
             return self.forward_features_list(x, masks, register_prompts)
 
@@ -286,11 +287,10 @@ class DinoVisionTransformer(nn.Module):
 
         for i, blk in enumerate(self.blocks):
             # print(i, return_attention, type(blk))
-            if return_attention:   
-                x, attn = blk(x, return_attention = return_attention)
-            else:
-                x = blk(x)
-                attn = None
+            x, attn = blk(x)
+            # else:
+            #     x = blk(x)
+            #     attn = None
 
         x_norm = self.norm(x)
         return {
@@ -419,7 +419,7 @@ def vit_base_attn(patch_size=16, num_register_tokens=0, **kwargs):
         depth=12,
         num_heads=12,
         mlp_ratio=4,
-        block_fn=partial(RegularBlock, attn_class=Attention),
+        block_fn=partial(Block, attn_class=Attention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )

@@ -362,7 +362,7 @@ def eval_linear(
     ):
         data = data.cuda(non_blocking=True)
 
-        labels, prompts = labels_prompts
+        labels, (prompts, _) = labels_prompts
 
         labels = labels.cuda(non_blocking=True)
         prompts = prompts.cuda(non_blocking=True)
@@ -547,7 +547,7 @@ def run_eval_linear(
     n_last_blocks = max(n_last_blocks_list)
     autocast_ctx = partial(torch.cuda.amp.autocast, enabled=True, dtype=autocast_dtype)
     feature_model = ModelWithIntermediateLayers(model, n_last_blocks, autocast_ctx)
-    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda(), register_prompts=train_dataset[0][1][1].unsqueeze(0).cuda())
+    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda(), register_prompts=train_dataset[0][1][1][0].unsqueeze(0).cuda())
 
     linear_classifiers, optim_param_groups = setup_linear_classifiers(
         sample_output,

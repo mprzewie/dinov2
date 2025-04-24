@@ -3,7 +3,7 @@
 # This source code is licensed under the Apache License, Version 2.0
 # found in the LICENSE file in the root directory of this source tree.
 import logging
-from random import random, randint
+from random import random, randint, shuffle
 from typing import Any, Tuple
 
 import torch
@@ -33,24 +33,34 @@ class DatasetWithEnumeratedTargets(Dataset):
 
 
 class TargetEncoder:
-    def __init__(self, encoding_size: int=1000):
+    def __init__(self, encoding_size: int=1000, num_negatives: int = 0):
         self.encoding_size = encoding_size
         self.warned = False
+        self.num_negatives = num_negatives
 
-    def __call__(self, target) -> torch.Tensor:
+    def __call__(self, target) -> Tuple[torch.Tensor, torch.Tensor]:
         if isinstance(target, int):
-            encoding = torch.zeros(self.encoding_size)
+            positive = torch.zeros(self.encoding_size)
             if target >= 0 and target < self.encoding_size:
-                encoding[target] = 1
+                positive[target] = 1
             elif not self.warned:
                 logger.warning(
                     f"Target {target} is out of bounds for encoding size {self.encoding_size}"
                 )
                 self.warned = True
+            assert self.num_negatives < self.encoding_size, f"{self.num_negatives=} >= {self.encoding_size=} doesn't make sense"
+            target_pool = [t for t in range(self.encoding_size) if t != target]
+            shuffle(target_pool)
+            negatives = []
+            for t in target_pool[:self.num_negatives]:
+                n = torch.zeros(self.encoding_size)
+                n[t] = 1
+                negatives.append(n)
+
         else:
             raise NotImplementedError((target, type(target)))
 
-        return encoding
+        return positive, (torch.stack(negatives) if len(negatives) > 0 else torch.zeros(0, self.encoding_size))
 
 class RandomEncoder(TargetEncoder):
     def __call__(self, target) -> torch.Tensor:

@@ -86,14 +86,16 @@ class Block(nn.Module):
 
         self.sample_drop_ratio = drop_path
 
-    def forward(self, x: Tensor, return_attention: bool = False) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         def attn_residual_func(x: Tensor) -> Tensor:
-            if not return_attention or isinstance(self.attn, MemEffAttention):
-                return self.ls1(self.attn(self.norm1(x)))
+            if isinstance(self.attn, MemEffAttention):
+                x = self.attn(self.norm1(x))
+                attn = None
             elif isinstance(self.attn, Attention):
                 x, attn = self.attn(self.norm1(x), return_attention=True)
-                x = self.ls1(x)
-                return x, attn
+
+            x = self.ls1(x)
+            return x, attn
 
         def ffn_residual_func(x: Tensor) -> Tensor:
             return self.ls2(self.mlp(self.norm2(x)))
@@ -110,9 +112,11 @@ class Block(nn.Module):
                 residual_func=ffn_residual_func,
                 sample_drop_ratio=self.sample_drop_ratio,
             )
+            attn = None
         elif self.training and self.sample_drop_ratio > 0.0:
             x = x + self.drop_path1(attn_residual_func(x))
             x = x + self.drop_path1(ffn_residual_func(x))  # FIXME: drop_path2
+            attn = None
         else:
             x_attn = attn_residual_func(x)
             if isinstance(x_attn, Tensor):
@@ -122,10 +126,9 @@ class Block(nn.Module):
 
             x = x + xattn
             x = x + ffn_residual_func(x)
-            if return_attention:
-                return x, attn
 
-        return x
+        return x, attn
+
 
 
 def drop_add_residual_stochastic_depth(
@@ -141,6 +144,10 @@ def drop_add_residual_stochastic_depth(
 
     # 2) apply residual_func to get residual
     residual = residual_func(x_subset)
+
+    # TODO
+    if isinstance(residual, tuple):
+        residual, _ = residual
 
     x_flat = x.flatten(1)
     residual = residual.flatten(1)
@@ -227,8 +234,8 @@ class NestedTensorBlock(Block):
         """
         x_list contains a list of tensors to nest together and run
         """
-        assert isinstance(self.attn, MemEffAttention)
-
+        # assert isinstance(self.attn, MemEffAttention)
+        # print("in", [x_.shape for x_ in x_list])
         if self.training and self.sample_drop_ratio > 0.0:
 
             def attn_residual_func(x: Tensor, attn_bias=None) -> Tensor:
@@ -237,6 +244,7 @@ class NestedTensorBlock(Block):
             def ffn_residual_func(x: Tensor, attn_bias=None) -> Tensor:
                 return self.mlp(self.norm2(x))
 
+            attn_list = [None] * len(x_list)
             x_list = drop_add_residual_stochastic_depth_list(
                 x_list,
                 residual_func=attn_residual_func,
@@ -249,7 +257,9 @@ class NestedTensorBlock(Block):
                 sample_drop_ratio=self.sample_drop_ratio,
                 scaling_vector=self.ls2.gamma if isinstance(self.ls1, LayerScale) else None,
             )
-            return x_list
+            # print("out", [x_.shape for x_ in x_list])
+
+            return x_list, attn_list
         else:
 
             def attn_residual_func(x: Tensor, attn_bias=None) -> Tensor:
@@ -259,9 +269,11 @@ class NestedTensorBlock(Block):
                 return self.ls2(self.mlp(self.norm2(x)))
 
             attn_bias, x = get_attn_bias_and_cat(x_list)
-            x = x + attn_residual_func(x, attn_bias=attn_bias)
+            x_attn = attn_residual_func(x, attn_bias=attn_bias)
+            attn = None
+            x = x + x_attn
             x = x + ffn_residual_func(x)
-            return attn_bias.split(x)
+            return attn_bias.split(x), attn
 
     def forward(self, x_or_x_list):
         if isinstance(x_or_x_list, Tensor):
@@ -271,4 +283,6 @@ class NestedTensorBlock(Block):
                 raise AssertionError("xFormers is required for using nested tensors")
             return self.forward_nested(x_or_x_list)
         else:
-            raise AssertionError
+            if isinstance(x_or_x_list, tuple):
+                assert False, [type(xl) for xl in x_or_x_list]
+            assert False, type(x_or_x_list)
