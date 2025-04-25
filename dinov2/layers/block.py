@@ -92,7 +92,7 @@ class Block(nn.Module):
                 x = self.attn(self.norm1(x))
                 attn = None
             elif isinstance(self.attn, Attention):
-                x, attn = self.attn(self.norm1(x), return_attention=True)
+                x, attn = self.attn(self.norm1(x))
 
             x = self.ls1(x)
             return x, attn

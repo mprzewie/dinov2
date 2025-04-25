@@ -7,6 +7,7 @@ from functools import partial
 import logging
 
 import torch
+from einops import einsum
 from torch import nn
 
 from dinov2.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss
@@ -144,7 +145,9 @@ class SSLMetaArch(nn.Module):
         upperbound = images["upperbound"]
         masks_weight = images["masks_weight"].cuda(non_blocking=True)
         register_global_prompts = images["collated_global_labels"].cuda(non_blocking=True)
+        register_global_negatives = images["collated_global_negatives"].cuda(non_blocking=True)
         register_local_prompts = images["collated_local_labels"].cuda(non_blocking=True)
+
 
         n_local_crops_loss_terms = max(n_local_crops * n_global_crops, 1)
         n_global_crops_loss_terms = (n_global_crops - 1) * n_global_crops
@@ -159,7 +162,10 @@ class SSLMetaArch(nn.Module):
         @torch.no_grad()
         def get_teacher_output():
             x, n_global_crops_teacher = global_crops, n_global_crops
-            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=register_global_prompts)
+            # teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=register_global_prompts)
+            teacher_register_input = torch.cat([register_global_prompts.unsqueeze(1), register_global_negatives], dim=1)
+            teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=teacher_register_input)
+
             teacher_cls_tokens = teacher_backbone_output_dict["x_norm_clstoken"]
             teacher_cls_tokens = teacher_cls_tokens.chunk(n_global_crops_teacher)
             # watch out: these are chunked and cat'd in reverse so A is matched to B in the global crops dino loss
@@ -225,6 +231,22 @@ class SSLMetaArch(nn.Module):
 
             else:
                 raise NotImplementedError
+
+            if teacher_backbone_output_dict["last_attn"] is not None:
+                tlattn = teacher_backbone_output_dict["last_attn"]
+                # TODO we have extracted attention. Cool. Not doing anything with it yet.
+                # assert False, (tlattn.shape, self.cfg.student.num_register_tokens, teacher_register_input.shape[1])
+                # reg_end = 1 + (self.cfg.student.num_register_tokens * teacher_register_input.shape[1])
+                # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(
+                #     dim=1)
+                # # mean along the head dim
+                #
+                # patches = teacher_backbone_output_dict["x_norm_patchtokens"]
+                # teacher_patch_reg_representations = einsum(
+                #     register_patch_mean_attn,
+                #     patches,
+                #     "b r p, b p e -> b r e"
+                # )
 
             return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_backbone_output_dict #TODO
 

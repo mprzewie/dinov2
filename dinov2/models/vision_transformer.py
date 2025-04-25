@@ -236,6 +236,9 @@ class DinoVisionTransformer(nn.Module):
 
         if self.register_tokens is not None:
             register_b =  self.register_tokens.expand(x.shape[0], -1, -1)
+            if len(register_prompts.shape) == 3:
+                assert register_b.shape[1] == 1, "what if there is more than one independent register? IDK yet"
+                register_b = register_b.repeat(1, register_prompts.shape[1], 1)
             if self.register_prompt_generator is not None:
                 register_wx = self.register_prompt_generator(register_prompts)
                 register_wx = register_wx.reshape(register_b.shape)
