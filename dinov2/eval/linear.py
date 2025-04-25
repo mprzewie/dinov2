@@ -470,7 +470,11 @@ def test_on_datasets(
         logger.info(f"Testing on {test_dataset_str}")
         test_data_loader = make_eval_data_loader(
             test_dataset_str, batch_size, num_workers, metric_type,
-            register_prompt_encoding_size=feature_model.feature_model.register_prompt_generator.in_features,
+            register_prompt_encoding_size=(
+                feature_model.feature_model.register_prompt_generator.in_features
+                if feature_model.feature_model.register_prompt_generator is not None
+                else 0
+            ),
             target_encoder=target_encoder,
         )
         dataset_results_dict = evaluate_linear_classifiers(
@@ -530,7 +534,11 @@ def run_eval_linear(
         transform=train_transform,
         target_transform=TargetKeeperAndEncoder(
            TRAIN_TE_CLS(
-                encoding_size=model.register_prompt_generator.in_features
+                encoding_size=(
+                    model.register_prompt_generator.in_features
+                    if model.register_prompt_generator is not None
+                    else 0
+                )
             )
         )
     )
