@@ -48,14 +48,16 @@ class TargetEncoder:
                     f"Target {target} is out of bounds for encoding size {self.encoding_size}"
                 )
                 self.warned = True
-            assert self.num_negatives < self.encoding_size, f"{self.num_negatives=} >= {self.encoding_size=} doesn't make sense"
-            target_pool = [t for t in range(self.encoding_size) if t != target]
-            shuffle(target_pool)
+
             negatives = []
-            for t in target_pool[:self.num_negatives]:
-                n = torch.zeros(self.encoding_size)
-                n[t] = 1
-                negatives.append(n)
+            if self.num_negatives > 0:
+                assert self.num_negatives < self.encoding_size, f"{self.num_negatives=} >= {self.encoding_size=} doesn't make sense"
+                target_pool = [t for t in range(self.encoding_size) if t != target]
+                shuffle(target_pool)
+                for t in target_pool[:self.num_negatives]:
+                    n = torch.zeros(self.encoding_size)
+                    n[t] = 1
+                    negatives.append(n)
 
         else:
             raise NotImplementedError((target, type(target)))
