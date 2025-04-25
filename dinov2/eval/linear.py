@@ -600,7 +600,7 @@ def run_eval_linear(
             class_mapping = None
         test_class_mappings.append(class_mapping)
 
-    metrics_file_path = os.path.join(output_dir, "results_eval_linear.json")
+    metrics_file_path = os.path.join(output_dir, f"results_eval_linear_{args.train_target_encoder}_{args.val_target_encoder}.json")
     val_results_dict, feature_model, linear_classifiers, iteration = eval_linear(
         feature_model=feature_model,
         linear_classifiers=linear_classifiers,
