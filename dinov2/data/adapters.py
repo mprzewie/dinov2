@@ -65,11 +65,11 @@ class TargetEncoder:
         return positive, (torch.stack(negatives) if len(negatives) > 0 else torch.zeros(0, self.encoding_size))
 
 class RandomEncoder(TargetEncoder):
-    def __call__(self, target) -> torch.Tensor:
-        target = randint(0, self.encoding_size-1)
-        encoding = torch.zeros(self.encoding_size)
-        encoding[target] = 1
-        return encoding
+    def __call__(self, true_target) -> Tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(true_target, int):
+            random_target = randint(0, self.encoding_size - 1)
+            return super().__call__(random_target)
+        raise NotImplementedError(type(true_target))
 
 class TargetKeeperAndEncoder:
     def __init__(self, target_encoder: TargetEncoder):
