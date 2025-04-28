@@ -414,9 +414,12 @@ class SSLMetaArch(nn.Module):
             )
 
             student_local_patch_reg_representations += 1e-6 * torch.randn_like(student_local_patch_reg_representations)
+            teacher_patch_reg_representations += 1e-6 * torch.randn_like(teacher_patch_reg_representations)
 
             assert not torch.isnan(student_local_patch_reg_representations).any(), "student_local_patch_reg_representations has NaNs"
-            assert not (student_local_patch_reg_representations.norm(dim=-1) == 0).any(), "Zero vector detected after normalization"
+            assert not (student_local_patch_reg_representations.norm(dim=-1) == 0).any(), "Zero vector detected in student after normalization"
+            assert not torch.isnan(teacher_patch_reg_representations).any(), "teacher_patch_reg_representations has NaNs"
+            assert not (teacher_patch_reg_representations.norm(dim=-1) == 0).any(), "Zero vector detected in teacher after normalization"
 
             teacher_patch_reg_representations_norm = F.normalize(
                 teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1
