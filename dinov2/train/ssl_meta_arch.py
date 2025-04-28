@@ -413,6 +413,9 @@ class SSLMetaArch(nn.Module):
                 "b r p, b p e -> b r e"
             )
 
+            assert not torch.isnan(student_local_patch_reg_representations).any(), "student_local_patch_reg_representations has NaNs"
+            assert not (student_local_patch_reg_representations.norm(dim=-1) == 0).any(), "Zero vector detected after normalization"
+
             teacher_patch_reg_representations_norm = F.normalize(
                 teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1
             ).chunk(n_global_crops)
@@ -431,6 +434,7 @@ class SSLMetaArch(nn.Module):
                     labels = torch.zeros(len(cont_map), dtype=torch.long, device=cont_map.device)
                     cont_loss = F.cross_entropy(cont_map, labels)
                     contr_loss_agg += cont_loss
+
 
             loss_dict["semantic_register_contrastive_loss"] = contr_loss_agg
             loss_accumulator += self.register_contrastive_loss_weight * contr_loss_agg
