@@ -409,7 +409,7 @@ class SSLMetaArch(nn.Module):
 
             student_local_patch_reg_representations = einsum(
                 student_register_mean_attn,
-                student_local_patches,
+                student_local_patches.detach(),
                 "b r p, b p e -> b r e"
             )
 

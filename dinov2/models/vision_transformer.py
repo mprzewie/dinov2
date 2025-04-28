@@ -289,11 +289,7 @@ class DinoVisionTransformer(nn.Module):
         x = self.prepare_tokens_with_masks(x, masks, register_prompts)
 
         for i, blk in enumerate(self.blocks):
-            # print(i, return_attention, type(blk))
             x, attn = blk(x)
-            # else:
-            #     x = blk(x)
-            #     attn = None
 
         register_inputs = 1
         if len(register_prompts.shape) != 2:
@@ -317,10 +313,8 @@ class DinoVisionTransformer(nn.Module):
                 continue
 
             if "norm" in k:
-                assert not (v == 0).any(), f"Zero vector detected in {k} after normalization"
+                assert not (v.norm(dim=-1) < 1e-6).any(), f"Near-zero vector detected in {k} after normalization"
             assert not torch.isnan(v).any(), f"{k} has NaNs"
-
-
 
         return out
 
