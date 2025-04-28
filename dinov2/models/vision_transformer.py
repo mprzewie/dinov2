@@ -303,7 +303,7 @@ class DinoVisionTransformer(nn.Module):
         actual_num_registers = self.num_register_tokens * register_inputs
         reg_end = actual_num_registers + 1
         x_norm = self.norm(x)
-        return {
+        out =  {
             "x_norm_clstoken": x_norm[:, 0],
             "x_norm_regtokens": x_norm[:, 1:reg_end],
             "x_norm_patchtokens": x_norm[:, reg_end:],
@@ -311,6 +311,18 @@ class DinoVisionTransformer(nn.Module):
             "masks": masks,
             "last_attn": attn,
         }
+
+        for k, v in out:
+            if not k.startswith("x"):
+                continue
+
+            if "norm" in k:
+                assert not (v == 0).any(), f"Zero vector detected in {k} after normalization"
+            assert not torch.isnan(v).any(), f"{k} has NaNs"
+
+
+
+        return out
 
     def _get_intermediate_layers_not_chunked(self, x, n=1, register_prompts=None,):
         x = self.prepare_tokens_with_masks(x, register_prompts=register_prompts)
