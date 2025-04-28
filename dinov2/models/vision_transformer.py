@@ -312,7 +312,7 @@ class DinoVisionTransformer(nn.Module):
             "last_attn": attn,
         }
 
-        for k, v in out:
+        for k, v in out.items():
             if not k.startswith("x"):
                 continue
 
