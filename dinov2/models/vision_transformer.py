@@ -295,11 +295,18 @@ class DinoVisionTransformer(nn.Module):
             #     x = blk(x)
             #     attn = None
 
+        register_inputs = 1
+        if len(register_prompts.shape) != 2:
+            assert len(register_prompts.shape) == 3
+            register_inputs = register_prompts.shape[1]
+
+        actual_num_registers = self.num_register_tokens * register_inputs
+        reg_end = actual_num_registers + 1
         x_norm = self.norm(x)
         return {
             "x_norm_clstoken": x_norm[:, 0],
-            "x_norm_regtokens": x_norm[:, 1 : self.num_register_tokens + 1],
-            "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
+            "x_norm_regtokens": x_norm[:, 1:reg_end],
+            "x_norm_patchtokens": x_norm[:, reg_end:],
             "x_prenorm": x,
             "masks": masks,
             "last_attn": attn,

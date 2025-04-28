@@ -18,7 +18,7 @@ from dinov2.utils.param_groups import get_params_groups_with_decay, fuse_params_
 from dinov2.fsdp import get_fsdp_wrapper, ShardedGradScaler, get_fsdp_modules, reshard_fsdp_model
 
 from dinov2.models.vision_transformer import BlockChunk
-
+import torch.nn.functional as F
 
 try:
     from xformers.ops import fmha
@@ -55,7 +55,7 @@ class SSLMetaArch(nn.Module):
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
         self.ibot_separate_head = cfg.ibot.separate_head
-
+        self.register_contrastive_loss_weight = cfg.student.register_contrastive_loss_weight
         logger.info("OPTIONS -- DINO")
         if self.do_dino:
             logger.info(f"OPTIONS -- DINO -- loss_weight: {cfg.dino.loss_weight}")
@@ -236,21 +236,22 @@ class SSLMetaArch(nn.Module):
                 tlattn = teacher_backbone_output_dict["last_attn"]
                 # TODO we have extracted attention. Cool. Not doing anything with it yet.
                 # assert False, (tlattn.shape, self.cfg.student.num_register_tokens, teacher_register_input.shape[1])
-                # reg_end = 1 + (self.cfg.student.num_register_tokens * teacher_register_input.shape[1])
-                # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(
-                #     dim=1)
-                # # mean along the head dim
-                #
-                # patches = teacher_backbone_output_dict["x_norm_patchtokens"]
-                # teacher_patch_reg_representations = einsum(
-                #     register_patch_mean_attn,
-                #     patches,
-                #     "b r p, b p e -> b r e"
-                # )
+                reg_end = 1 + (self.cfg.student.num_register_tokens * teacher_register_input.shape[1])
+                register_patch_mean_attn = tlattn[:, :, 1:reg_end, reg_end:].mean(dim=1)
+                # mean along the head dim
 
-            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_backbone_output_dict #TODO
+                patches = teacher_backbone_output_dict["x_norm_patchtokens"]
 
-        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_backbone_output_dict = get_teacher_output()
+                teacher_patch_reg_representations = einsum(
+                    register_patch_mean_attn,
+                    patches,
+                    "b r p, b p e -> b r e"
+                )
+
+
+            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_patch_reg_representations
+
+        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, teacher_patch_reg_representations = get_teacher_output()
         reshard_fsdp_model(self.teacher)
 
         loss_dict = {}
@@ -393,6 +394,46 @@ class SSLMetaArch(nn.Module):
 
             # accumulate loss
             loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
+
+        if self.register_contrastive_loss_weight > 0:
+            # B, 1+r_neg, E = teacher_patch_reg_representations.shape
+            reg_end = 1 + (self.cfg.student.num_register_tokens)
+            student_register_mean_attn = student_local_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+            # assert False, student_register_mean_attn.shape
+            # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+            # mean along the head dim
+
+            student_local_patches = student_local_backbone_output_dict["x_norm_patchtokens"]
+
+            # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  teacher_patch_reg_representations]]
+
+            student_local_patch_reg_representations = einsum(
+                student_register_mean_attn,
+                student_local_patches,
+                "b r p, b p e -> b r e"
+            )
+
+            teacher_patch_reg_representations_norm = F.normalize(
+                teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1
+            ).chunk(n_global_crops)
+            student_local_patch_reg_representations_norm = F.normalize(
+                student_local_patch_reg_representations, eps=1e-8, p=2, dim=-1
+            ).chunk(n_local_crops)
+
+            contr_loss_agg = 0
+            for tr in teacher_patch_reg_representations_norm:
+                for sr in student_local_patch_reg_representations_norm:
+                    cont_map = einsum(sr, tr, "b sr e, b tr e -> b sr tr")
+                    b, srn, trn = cont_map.shape
+                    assert srn == 1, cont_map.shape
+                    cont_map = cont_map.squeeze()
+                    assert cont_map.shape == (b, trn)
+                    labels = torch.zeros(len(cont_map), dtype=torch.long, device=cont_map.device)
+                    cont_loss = F.cross_entropy(cont_map, labels)
+                    contr_loss_agg += cont_loss
+
+            loss_dict["semantic_register_contrastive_loss"] = contr_loss_agg
+            loss_accumulator += self.register_contrastive_loss_weight * contr_loss_agg
 
         self.backprop_loss(loss_accumulator)
 
