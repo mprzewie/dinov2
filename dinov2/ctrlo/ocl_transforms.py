@@ -9,16 +9,19 @@ import random
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
-import decord
 import numpy as np
 import torch
 from torchdata.datapipes.iter import IterDataPipe
 from torchdata.datapipes.utils import StreamWrapper
 
-import ocl.utils.dataset_patches  # noqa: F401
+import dinov2.ctrlo.dataset_patches  # noqa: F401
 
-# Setup decord to return torch tensors by default.
-decord.bridge.set_bridge("torch")
+try:
+    import decord
+    # Setup decord to return torch tensors by default.
+    decord.bridge.set_bridge("torch")
+except ImportError:
+    print("Can't import decord, won't be able to work with videos")
 
 
 class Transform(ABC):
@@ -570,7 +573,7 @@ class VideoDecoder(Transform):
         return self._fields
 
     def _chunk_iterator(
-        self, vrs: Dict[str, decord.VideoReader], key: str, inputs: Dict[str, Any]
+        self, vrs: Dict[str, "decord.VideoReader"], key: str, inputs: Dict[str, Any]
     ) -> Iterable[Tuple[str, Dict]]:
         """Iterate over chunks of the video.
 
@@ -639,7 +642,7 @@ class DecodeRandomWindow(VideoDecoder):
         return self._random
 
     def _chunk_iterator(
-        self, vrs: Mapping[str, decord.VideoReader], key: str, inputs: Dict[str, Any]
+        self, vrs: Mapping[str, "decord.VideoReader"], key: str, inputs: Dict[str, Any]
     ) -> Iterable[Tuple[str, Dict]]:
         """Iterate over chunks of the video.
 
@@ -666,7 +669,7 @@ class DecodeRandomStridedWindow(DecodeRandomWindow):
     """Decode random strided segment of input video."""
 
     def _chunk_iterator(
-        self, vrs: Mapping[str, decord.VideoReader], key: str, inputs: Dict[str, Any]
+        self, vrs: Mapping[str, "decord.VideoReader"], key: str, inputs: Dict[str, Any]
     ) -> Iterable[Tuple[str, Dict]]:
         """Iterate over chunks of the video.
 

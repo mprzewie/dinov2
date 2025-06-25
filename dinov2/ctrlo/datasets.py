@@ -15,10 +15,10 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils import collate as torch_collate
 from torchdata.datapipes.iter import IterDataPipe
 
-from ctrlo.data_decoding import default_decoder
+from dinov2.ctrlo.data_decoding import default_decoder
 
-import ctrlo.dataset_patches  # noqa: F401
-from ctrlo.ocl_transforms import Transform
+import dinov2.ctrlo.dataset_patches  # noqa: F401
+from dinov2.ctrlo.ocl_transforms import Transform
 
 LOGGER = logging.getLogger(__name__)
 USE_AWS_SDK = strtobool(os.getenv("USE_AWS_SDK", "True"))

@@ -376,11 +376,11 @@ def eval_log_regression_with_model(
     transform = make_classification_eval_transform(resize_size=224)
     target_transform = None
 
-    train_dataset = make_dataset(dataset_str=train_dataset_str, transform=transform, target_transform=target_transform)
-    val_dataset = make_dataset(dataset_str=val_dataset_str, transform=transform, target_transform=target_transform)
+    train_dataset = make_dataset(dataset_str=train_dataset_str, transform_dino=transform, target_transform=target_transform)
+    val_dataset = make_dataset(dataset_str=val_dataset_str, transform_dino=transform, target_transform=target_transform)
     if finetune_dataset_str is not None:
         finetune_dataset = make_dataset(
-            dataset_str=finetune_dataset_str, transform=transform, target_transform=target_transform
+            dataset_str=finetune_dataset_str, transform_dino=transform, target_transform=target_transform
         )
     else:
         finetune_dataset = None

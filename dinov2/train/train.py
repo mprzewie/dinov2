@@ -198,11 +198,11 @@ def do_train(cfg, model, resume=False):
 
     dataset = make_dataset(
         dataset_str=cfg.train.dataset_path,
-        transform=data_transform,
-        target_transform=TargetEncoder(
-            encoding_size=cfg.student.register_prompt_size,
-            num_negatives=cfg.student.num_negative_prompts,
-        )
+        transform_dino=data_transform,
+        # target_transform=TargetEncoder(
+        #     encoding_size=cfg.student.register_prompt_size,
+        #     num_negatives=cfg.student.num_negative_prompts,
+        # )
     )
 
     # sampler_type = SamplerType.INFINITE
@@ -217,6 +217,7 @@ def do_train(cfg, model, resume=False):
         sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
         drop_last=True,
         collate_fn=collate_fn,
+        wd_train=True,
     )
 
     # training loop
@@ -235,9 +236,9 @@ def do_train(cfg, model, resume=False):
         max_iter,
         start_iter,
     ):
-        # assert False, {
-        #     k: (v.shape if isinstance(v, torch.Tensor) else type(v)) for (k, v) in data.items()
-        # }
+        assert False, {
+            k: (v.shape if isinstance(v, torch.Tensor) else type(v)) for (k, v) in data.items()
+        }
         current_batch_size = data["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:
             return

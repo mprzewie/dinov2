@@ -6,15 +6,19 @@
 import logging
 import os
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, List, Optional, TypeVar
 
 import torch
+from torch.nn.functional import embedding
 from torch.utils.data import Sampler
 from torchvision.datasets import ImageFolder
+from torchvision.transforms import transforms
 
 from .datasets import ImageNet, ImageNet22k
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
-
+from ..ctrlo import ocl_transforms, ocl_preprocessing
+from ..ctrlo.datasets import WebdatasetDataModule
 
 logger = logging.getLogger("dinov2")
 
@@ -62,6 +66,8 @@ def _parse_dataset_str(dataset_str: str):
         class_ = ImageNet22k
     elif name == "ImageFolder":
         class_ = ImageFolder
+    elif name == "ctrlo":
+        class_ = None
     else:
         raise ValueError(f'Unsupported dataset "{name}"')
 
@@ -71,7 +77,7 @@ def _parse_dataset_str(dataset_str: str):
 def make_dataset(
     *,
     dataset_str: str,
-    transform: Optional[Callable] = None,
+    transform_dino: Optional[Callable] = None,
     target_transform: Optional[Callable] = None,
 ):
     """
@@ -79,7 +85,7 @@ def make_dataset(
 
     Args:
         dataset_str: A dataset string description (e.g. ImageNet:split=TRAIN).
-        transform: A transform to apply to images.
+        transform_dino: A transform to apply to images.
         target_transform: A transform to apply to targets.
 
     Returns:
@@ -88,13 +94,126 @@ def make_dataset(
     logger.info(f'using dataset: "{dataset_str}"')
 
     class_, kwargs = _parse_dataset_str(dataset_str)
-    dataset = class_(transform=transform, target_transform=target_transform, **kwargs)
+    if dataset_str.startswith("Image"):
+        dataset = class_(transform=transform_dino, target_transform=target_transform, **kwargs)
+        logger.info(f"# of dataset samples: {len(dataset):,d}")
+    elif dataset_str.startswith("ctrlo"):
+        ds_root = Path(kwargs["root"])
+        ds_name = kwargs["ds_name"]
+        ds_split = kwargs["ds_split"]
+        ds_size = kwargs["ds_size"]
+        preprocessing_transform_03a = ocl_transforms.Map(
+            transform=transforms.Compose([
+                ocl_preprocessing.SelectConditioningInfoVG(
+                    embeddings_path=str(ds_root / "category_name_to_llama3_emb.pkl"),
+                    num_max_binds=3,
+                    num_slots=3
+                ),  # Replace with `experiment.num_slots`
+                ocl_preprocessing.CopyFields(mapping={"instance_mask": "instance_mask_v2"})
+            ]),
+            fields=("image", "instance_mask", "instance_bbox", "name", "bbox_centroids", "name_embedding", "selected_indices", "contrastive_loss_mask", "all_bbox_centroids"),
+            batch_transform=False
+        )
 
-    logger.info(f"# of dataset samples: {len(dataset):,d}")
+        def train_image_duplicator(dict_with_data: dict):
+            image = dict_with_data["image"]
+            dict_with_data.pop("image")
+            dict_with_data["image_vg"] = image.copy()
+            dict_with_data["image_dino"] = image.copy()
+
+        train_transform_03b = ocl_transforms.SimpleTransform(
+            transforms={
+                "image_vg": transforms.Compose([
+                    transforms.Lambda(lambda image: image.copy()),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]),
+                "image_dino": transform_dino,
+                "name_embedding": transforms.Compose([
+                    transforms.Lambda(lambda name_embedding: name_embedding.copy()),
+                    ocl_preprocessing.ToTensor()
+                ]),
+                "bbox_centroids": transforms.Compose([
+                    transforms.Lambda(lambda bbox_centroids: bbox_centroids.copy()),
+                    ocl_preprocessing.ToTensor()
+                ]),
+                "all_bbox_centroids": transforms.Compose([
+                    transforms.Lambda(lambda all_bbox_centroids: all_bbox_centroids.copy()),
+                    ocl_preprocessing.ToTensor()
+                ]),
+                "selected_indices": transforms.Compose([
+                    transforms.Lambda(lambda selected_indices: selected_indices.copy()),
+                    ocl_preprocessing.ToTensor()
+                ]),
+                "contrastive_loss_mask": transforms.Compose([
+                    transforms.Lambda(lambda contrastive_loss_mask: contrastive_loss_mask.copy()),
+                    ocl_preprocessing.ToTensor()
+                ]),
+                "instance_mask": transforms.Compose([
+                    ocl_preprocessing.IntegerToOneHotMask(output_axis=-3),
+                    ocl_preprocessing.AddEmptyMasksVG(),
+                    ocl_preprocessing.DenseMaskToTensor()
+                ]),
+                "instance_mask_v2": transforms.Compose([
+                    ocl_preprocessing.IntegerToOneHotMask(output_axis=-3),
+                    ocl_preprocessing.AddEmptyMasksVG(),
+                    ocl_preprocessing.DenseMaskToTensor()
+                ])
+            },
+            batch_transform=False
+        )
+
+        eval_transforms_03c = ocl_transforms.SimpleTransform(
+            transforms={
+                "image": transforms.Compose([
+                    transforms.Lambda(lambda image: image.copy()),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ]),
+                "instance_mask": transforms.Compose([
+                    ocl_preprocessing.IntegerToOneHotMask(output_axis=-3),
+                    ocl_preprocessing.AddEmptyMasksVG(),
+                    ocl_preprocessing.DenseMaskToTensor()
+                ]),
+                "instance_mask_v2": transforms.Compose([
+                    ocl_preprocessing.IntegerToOneHotMask(output_axis=-3),
+                    ocl_preprocessing.AddEmptyMasksVG(),
+                    ocl_preprocessing.DenseMaskToTensor()
+                ])
+            },
+            batch_transform=False
+        )
+
+        eval_transforms = {
+            "03a_preprocessing": preprocessing_transform_03a,
+            "03c_preprocessing": eval_transforms_03c,
+        }
+
+        train_transforms = {
+            "03a_preprocessing": preprocessing_transform_03a,
+            "03ab_image_duplicate": train_image_duplicator,
+            "03b_preprocessing": train_transform_03b,
+        }
+
+        dataset = WebdatasetDataModule(
+            num_workers=1,
+            batch_size=1,
+            train_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
+            val_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
+            test_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
+            train_size=ds_size,
+            val_size=ds_size,
+            test_size=ds_size,
+            use_autopadding=True,
+            train_transforms=train_transforms,
+            eval_transforms=eval_transforms,
+            shuffle_train=True,
+            use_epochs=False,
+        )
 
     # Aggregated datasets do not expose (yet) these attributes, so add them.
     if not hasattr(dataset, "transform"):
-        setattr(dataset, "transform", transform)
+        setattr(dataset, "transform", transform_dino)
     if not hasattr(dataset, "target_transform"):
         setattr(dataset, "target_transform", target_transform)
 
@@ -180,6 +299,7 @@ def make_data_loader(
     drop_last: bool = True,
     persistent_workers: bool = False,
     collate_fn: Optional[Callable[[List[T]], Any]] = None,
+    wd_train: bool = True,
 ):
     """
     Creates a data loader with the specified parameters.
@@ -198,33 +318,47 @@ def make_data_loader(
         collate_fn: Function that performs batch collation
     """
 
-    sampler = _make_sampler(
-        dataset=dataset,
-        type=sampler_type,
-        shuffle=shuffle,
-        seed=seed,
-        size=sampler_size,
-        advance=sampler_advance,
-    )
+    if isinstance(dataset, torch.utils.data.Dataset):
+        sampler = _make_sampler(
+            dataset=dataset,
+            type=sampler_type,
+            shuffle=shuffle,
+            seed=seed,
+            size=sampler_size,
+            advance=sampler_advance,
+        )
 
-    def worker_init_fn(worker_id):
-        os.sched_setaffinity(0, range(os.cpu_count()))
+        def worker_init_fn(worker_id):
+            os.sched_setaffinity(0, range(os.cpu_count()))
 
-    logger.info("using PyTorch data loader")
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        sampler=sampler,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=drop_last,
-        persistent_workers=persistent_workers,
-        collate_fn=collate_fn,
-        worker_init_fn=worker_init_fn
-    )
+        logger.info("using PyTorch data loader")
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=drop_last,
+            persistent_workers=persistent_workers,
+            collate_fn=collate_fn,
+            worker_init_fn=worker_init_fn
+        )
 
-    try:
-        logger.info(f"# of batches: {len(data_loader):,d}")
-    except TypeError:  # data loader has no length
-        logger.info("infinite data loader")
-    return data_loader
+
+
+        try:
+            logger.info(f"# of batches: {len(data_loader):,d}")
+        except TypeError:  # data loader has no length
+            logger.info("infinite data loader")
+        return data_loader
+
+    elif isinstance(dataset, WebdatasetDataModule):
+        dataset.batch_size = batch_size
+        dataset.num_workers = num_workers
+        dataset.shuffle_train = shuffle
+
+        if wd_train:
+            return dataset.train_dataloader()
+        else:
+            return dataset.val_dataloader()
+

@@ -430,7 +430,7 @@ def make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type
     TE_CLS = TargetEncoder if target_encoder == "target" else RandomEncoder
     test_dataset = make_dataset(
         dataset_str=test_dataset_str,
-        transform=make_classification_eval_transform(),
+        transform_dino=make_classification_eval_transform(),
         target_transform=TargetKeeperAndEncoder(
             TE_CLS(
                 encoding_size=register_prompt_encoding_size
@@ -527,7 +527,7 @@ def run_eval_linear(
 
     train_dataset = make_dataset(
         dataset_str=train_dataset_str,
-        transform=train_transform,
+        transform_dino=train_transform,
         target_transform=TargetKeeperAndEncoder(
            TRAIN_TE_CLS(
                 encoding_size=model.register_prompt_generator.in_features
