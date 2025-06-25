@@ -55,7 +55,7 @@ def _parse_dataset_str(dataset_str: str):
 
     for token in tokens[1:]:
         key, value = token.split("=")
-        assert key in ("root", "extra", "split")
+        # assert key in ("root", "extra", "split")
         kwargs[key] = value
 
     if name == "ImageNet":
@@ -101,7 +101,7 @@ def make_dataset(
         ds_root = Path(kwargs["root"])
         ds_name = kwargs["ds_name"]
         ds_split = kwargs["ds_split"]
-        ds_size = kwargs["ds_size"]
+        ds_size = int(kwargs["ds_size"])
         preprocessing_transform_03a = ocl_transforms.Map(
             transform=transforms.Compose([
                 ocl_preprocessing.SelectConditioningInfoVG(
