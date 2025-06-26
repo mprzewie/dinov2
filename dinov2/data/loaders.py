@@ -130,7 +130,10 @@ def make_dataset(
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ]),
-                "image_dino": transform_dino,
+                "image_dino": transforms.Compose([
+                    transforms.ToPILImage(),
+                    transform_dino,
+                ]),
                 "name_embedding": transforms.Compose([
                     # transforms.Lambda(lambda name_embedding: name_embedding.copy()),
                     transforms.Lambda(_numpycopy),
