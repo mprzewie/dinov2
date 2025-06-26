@@ -9,6 +9,7 @@ import math
 import os
 from functools import partial
 
+import numpy as np
 from fvcore.common.checkpoint import PeriodicCheckpointer
 import torch
 
@@ -236,9 +237,18 @@ def do_train(cfg, model, resume=False):
         max_iter,
         start_iter,
     ):
-        assert False, {
-            k: (v.shape if isinstance(v, torch.Tensor) else type(v)) for (k, v) in data.items()
-        }
+        def tellme(elem):
+            if isinstance(elem, (torch.Tensor, np.ndarray)):
+                return elem.shape
+            elif isinstance(elem, dict):
+                return {k: tellme(v) for k, v in elem.items()}
+            else:
+                return type(elem)
+
+        from pprint import pprint
+        pprint(tellme(data))
+        assert False
+
         current_batch_size = data["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:
             return
