@@ -242,6 +242,8 @@ def do_train(cfg, model, resume=False):
                 return elem.shape
             elif isinstance(elem, dict):
                 return {k: tellme(v) for k, v in elem.items()}
+            elif isinstance(elem, list):
+                return [tellme(e) for e in elem]
             else:
                 return type(elem)
 
