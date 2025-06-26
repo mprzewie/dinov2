@@ -115,15 +115,9 @@ def make_dataset(
             batch_transform=False
         )
 
-        def train_image_duplicator(dict_with_data: dict):
-            image = dict_with_data["image"]
-            dict_with_data.pop("image")
-            dict_with_data["image_vg"] = image.copy()
-            dict_with_data["image_dino"] = image.copy()
-
         train_transform_03b = ocl_transforms.SimpleTransform(
             transforms={
-                "image_vg": transforms.Compose([
+                "image": transforms.Compose([
                     transforms.Lambda(lambda image: image.copy()),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -191,7 +185,7 @@ def make_dataset(
 
         train_transforms = {
             "03a_preprocessing": preprocessing_transform_03a,
-            "03ab_image_duplicate": transforms.Lambda(train_image_duplicator),
+            "03ab_image_duplicate": ocl_transforms.DuplicateFields({"image": "image_dino"}),
             "03b_preprocessing": train_transform_03b,
         }
 
