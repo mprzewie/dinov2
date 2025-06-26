@@ -191,7 +191,7 @@ def make_dataset(
 
         train_transforms = {
             "03a_preprocessing": preprocessing_transform_03a,
-            "03ab_image_duplicate": train_image_duplicator,
+            "03ab_image_duplicate": transforms.Lambda(train_image_duplicator),
             "03b_preprocessing": train_transform_03b,
         }
 
