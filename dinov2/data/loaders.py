@@ -185,7 +185,7 @@ def make_dataset(
 
         train_transforms = {
             "03a_preprocessing": preprocessing_transform_03a,
-            "03ab_image_duplicate": ocl_transforms.DuplicateFields({"image": "image_dino"}),
+            "03ab_image_duplicate": ocl_transforms.DuplicateFields({"image": "image_dino"}, batch_transform=False),
             "03b_preprocessing": train_transform_03b,
         }
 
