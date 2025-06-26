@@ -75,6 +75,9 @@ def _parse_dataset_str(dataset_str: str):
     return class_, kwargs
 
 
+def _numpycopy(np_array: np.ndarray):
+    return np_array.copy()
+
 def make_dataset(
     *,
     dataset_str: str,
@@ -117,41 +120,40 @@ def make_dataset(
         )
 
 
-        def numpycopy(np_array: np.ndarray):
-            return np_array.copy()
+
 
         train_transform_03b = ocl_transforms.SimpleTransform(
             transforms={
                 "image": transforms.Compose([
                     # transforms.Lambda(lambda image: image.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ]),
                 "image_dino": transform_dino,
                 "name_embedding": transforms.Compose([
                     # transforms.Lambda(lambda name_embedding: name_embedding.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     ocl_preprocessing.ToTensor()
                 ]),
                 "bbox_centroids": transforms.Compose([
                     # transforms.Lambda(lambda bbox_centroids: bbox_centroids.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     ocl_preprocessing.ToTensor()
                 ]),
                 "all_bbox_centroids": transforms.Compose([
                     # transforms.Lambda(lambda all_bbox_centroids: all_bbox_centroids.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     ocl_preprocessing.ToTensor()
                 ]),
                 "selected_indices": transforms.Compose([
                     # transforms.Lambda(lambda selected_indices: selected_indices.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     ocl_preprocessing.ToTensor()
                 ]),
                 "contrastive_loss_mask": transforms.Compose([
                     # transforms.Lambda(lambda contrastive_loss_mask: contrastive_loss_mask.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     ocl_preprocessing.ToTensor()
                 ]),
                 "instance_mask": transforms.Compose([
@@ -172,7 +174,7 @@ def make_dataset(
             transforms={
                 "image": transforms.Compose([
                     # transforms.Lambda(lambda image: image.copy()),
-                    transforms.Lambda(numpycopy),
+                    transforms.Lambda(_numpycopy),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ]),
