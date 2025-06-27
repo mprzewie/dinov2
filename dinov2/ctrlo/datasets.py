@@ -136,8 +136,8 @@ class WebdatasetDataModule:
 
         if use_autopadding:
             self.collate_fn = collate_with_autopadding
-            assert False, f"{use_autopadding=} is not allowed"
         else:
+            assert False, f"{use_autopadding=} is not allowed"
             self.collate_fn = collate_with_batch_size
 
     def _create_webdataset(
@@ -434,7 +434,7 @@ def collate_with_batch_size(batch: List[Dict[str, torch.Tensor]], dino_collate_f
     return torch_collate.default_collate(batch)
 
 
-def collate_with_autopadding(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_with_autopadding(batch: List[Dict[str, torch.Tensor]], dino_collate_fn: Callable) -> Dict[str, torch.Tensor]:
     """Collate function that takes a batch of data and stacks it with a batch dimension.
 
     In contrast to torch's collate function, this function automatically pads tensors of different
@@ -515,7 +515,14 @@ def collate_with_autopadding(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, 
     elif isinstance(elem, str):
         return batch
     elif isinstance(elem, collections.abc.Mapping):
-        out = {key: collate_with_autopadding([d[key] for d in batch]) for key in elem}
+        out = {
+            key: (
+                dino_collate_fn([d[key] for d in batch])
+                if key == "image_dino"
+                else collate_with_autopadding([d[key] for d in batch])
+            )
+            for key in elem
+        }
         out["batch_size"] = len(batch)
         try:
             return elem_type(out)
