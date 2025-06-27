@@ -6,6 +6,7 @@
 import logging
 import os
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, List, Optional, TypeVar
 
@@ -78,7 +79,7 @@ def _parse_dataset_str(dataset_str: str):
 def _numpycopy(np_array: np.ndarray):
     return np_array.copy()
 
-def _pad_with_fake_target(image_dino, target_transform: Optional[Callable]):
+def _pad_with_fake_target(image_dino, target_transform: Optional[Callable] = None):
     fake_target = -1
     if target_transform is not None:
         fake_target = target_transform(fake_target)
@@ -136,7 +137,12 @@ def make_dataset(
                 "image_dino": transforms.Compose([
                     transforms.ToPILImage(),
                     transform_dino,
-                    transforms.Lambda(_pad_with_fake_target),
+                    transforms.Lambda(
+                        partial(
+                            _pad_with_fake_target,
+                            target_transform=target_transform
+                        )
+                    ),
                 ]),
                 "name_embedding": transforms.Compose([
                     # transforms.Lambda(lambda name_embedding: name_embedding.copy()),
