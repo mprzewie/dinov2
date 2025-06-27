@@ -136,6 +136,7 @@ class WebdatasetDataModule:
 
         if use_autopadding:
             self.collate_fn = collate_with_autopadding
+            assert False, f"{use_autopadding=} is not allowed"
         else:
             self.collate_fn = collate_with_batch_size
 
@@ -189,7 +190,7 @@ class WebdatasetDataModule:
         else:
             return datapipe.cycle()
 
-    def _create_dataloader(self, dataset, batch_transforms, size, batch_size, partial_batches):
+    def _create_dataloader(self, dataset, batch_transforms, size, batch_size, partial_batches, dino_collate_fn):
         # Don't return partial batches during training as these give the partial samples a higher
         # weight in the optimization than the other samples of the dataset.
 
@@ -197,7 +198,12 @@ class WebdatasetDataModule:
         dataset = dataset.batch(
             batch_size,
             drop_last=not partial_batches,
-        ).collate(collate_fn=self.collate_fn)
+        ).collate(
+            collate_fn=partial(
+                self.collate_fn,
+                dino_collate_fn=dino_collate_fn
+            )
+        )
 
         for transform in batch_transforms:
             dataset = transform(dataset)
@@ -226,13 +232,14 @@ class WebdatasetDataModule:
             transforms=_get_single_element_transforms(transforms),
         )
 
-    def train_dataloader(self):
+    def train_dataloader(self, dino_collate_fn):
         return self._create_dataloader(
             dataset=self.train_data_iterator(),
             batch_transforms=_get_batch_transforms(self.train_transforms),
             size=self.train_size,
             batch_size=self.batch_size,
             partial_batches=False,
+            dino_collate_fn=dino_collate_fn,
         )
 
     def val_data_iterator(self):
@@ -247,13 +254,14 @@ class WebdatasetDataModule:
             transforms=_get_single_element_transforms(transforms),
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self, dino_collate_fn):
         return self._create_dataloader(
             dataset=self.val_data_iterator(),
             batch_transforms=_get_batch_transforms(self.eval_transforms),
             size=self.val_size,
             batch_size=self.eval_batch_size,
             partial_batches=True,
+            dino_collate_fn=dino_collate_fn,
         )
 
     def test_data_iterator(self):
@@ -267,13 +275,14 @@ class WebdatasetDataModule:
             transforms=_get_single_element_transforms(self.eval_transforms),
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self, dino_collate_fn):
         return self._create_dataloader(
             dataset=self.test_data_iterator(),
             batch_transforms=_get_batch_transforms(self.eval_transforms),
             size=self.test_size,
             batch_size=self.eval_batch_size,
             partial_batches=True,
+            dino_collate_fn=dino_collate_fn,
         )
 
 
@@ -415,10 +424,11 @@ class DummyDataModule:
         return self._create_dataloader(dataset, self.eval_batch_size)
 
 
-def collate_with_batch_size(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_with_batch_size(batch: List[Dict[str, torch.Tensor]], dino_collate_fn: Callable) -> Dict[str, torch.Tensor]:
     """Default pytorch collate function with additional `batch_size` output for dict input."""
     if isinstance(batch[0], collections.abc.Mapping):
         out = torch_collate.default_collate(batch)
+        out["image_dino"] = dino_collate_fn([b["image_dino"] for b in batch])
         out["batch_size"] = len(batch)
         return out
     return torch_collate.default_collate(batch)
