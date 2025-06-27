@@ -359,8 +359,6 @@ def make_data_loader(
             worker_init_fn=worker_init_fn
         )
 
-
-
         try:
             logger.info(f"# of batches: {len(data_loader):,d}")
         except TypeError:  # data loader has no length
@@ -373,7 +371,7 @@ def make_data_loader(
         dataset.shuffle_train = shuffle
 
         if wd_train:
-            return dataset.train_dataloader()
+            return dataset.train_dataloader(dino_collate_fn=collate_fn)
         else:
-            return dataset.val_dataloader()
+            return dataset.val_dataloader(dino_collate_fn=collate_fn)
 
