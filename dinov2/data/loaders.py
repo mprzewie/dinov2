@@ -78,6 +78,12 @@ def _parse_dataset_str(dataset_str: str):
 def _numpycopy(np_array: np.ndarray):
     return np_array.copy()
 
+def _pad_with_fake_target(image_dino, target_transform: Optional[Callable]):
+    fake_target = -1
+    if target_transform is not None:
+        fake_target = target_transform(fake_target)
+    return image_dino, fake_target
+
 def make_dataset(
     *,
     dataset_str: str,
@@ -119,9 +125,6 @@ def make_dataset(
             batch_transform=False
         )
 
-
-
-
         train_transform_03b = ocl_transforms.SimpleTransform(
             transforms={
                 "image": transforms.Compose([
@@ -133,6 +136,7 @@ def make_dataset(
                 "image_dino": transforms.Compose([
                     transforms.ToPILImage(),
                     transform_dino,
+                    transforms.Lambda(_pad_with_fake_target),
                 ]),
                 "name_embedding": transforms.Compose([
                     # transforms.Lambda(lambda name_embedding: name_embedding.copy()),
