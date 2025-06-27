@@ -247,9 +247,12 @@ def do_train(cfg, model, resume=False):
             else:
                 return type(elem)
 
-        from pprint import pprint
-        pprint(tellme(data))
-        assert False
+        # from pprint import pprint
+        # pprint(tellme(data))
+        # assert False
+
+        #TODO TU SKONCZYLEM
+        data = data["image_dino"]
 
         current_batch_size = data["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:

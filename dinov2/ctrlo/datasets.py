@@ -442,7 +442,6 @@ def collate_with_autopadding(batch: List[Dict[str, torch.Tensor]], dino_collate_
 
     Adapted from https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py.
     """
-
     elem = batch[0]
     elem_type = type(elem)
     if isinstance(elem, torch.Tensor):
@@ -515,8 +514,6 @@ def collate_with_autopadding(batch: List[Dict[str, torch.Tensor]], dino_collate_
     elif isinstance(elem, str):
         return batch
     elif isinstance(elem, collections.abc.Mapping):
-        # print("COLLATING")
-        # print(elem.keys())
         out = {
             key: (
                 dino_collate_fn([d[key] for d in batch])
