@@ -1,0 +1,35 @@
+# this corresponds to the default config
+train:
+#  dataset_path: ImageNet:split=TRAIN:root=~/data/Imagenette:extra=~/data/Imagenette/dinov2_metadata
+  # dataset_path: ImageFolder:root=~/data/Imagenette/train
+  dataset_path: ctrlo:root=/net/storage/pr3/plgrid/plgg_gmum_cc/datasets/visual_genome_coco/:ds_name=vg_only:ds_split=train:ds_size=118287
+  batch_size_per_gpu: 256
+  num_workers: 16
+  OFFICIAL_EPOCH_LENGTH: 118
+  centering: sinkhorn_knopp
+optim:
+  epochs: 500
+  weight_decay_end: 0.2
+  base_lr: 2.0e-04  # learning rate for a batch size of 1024
+  warmup_epochs: 80
+  layerwise_decay: 1.0
+crops:
+  local_crops_size: 98
+student:
+  block_chunks: 0
+#  arch: vit_small_attn
+  arch: vit_base_attn
+  num_register_tokens: 0
+  register_prompt_size: 0
+  num_negative_prompts: 0
+  patch_size: 14
+  drop_path_rate: 0.4
+  ffn_layer: mlp # swiglufused
+teacher:
+  momentum_teacher: 0.994
+dino:
+  head_n_prototypes: 131072
+  head_bottleneck_dim: 384
+ibot:
+  separate_head: true
+  head_n_prototypes: 131072
