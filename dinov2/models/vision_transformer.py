@@ -306,7 +306,7 @@ class DinoVisionTransformer(nn.Module):
         x_norm = self.norm(x)
         # assert False, type(attn)
         reg_rep = 1
-        if len(register_prompts.shape) != 2:
+        if register_prompts is not None and len(register_prompts.shape) != 2:
             assert len(register_prompts.shape) == 3
             reg_rep = register_prompts.shape[1]
 

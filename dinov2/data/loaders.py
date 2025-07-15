@@ -12,15 +12,14 @@ from typing import Any, Callable, List, Optional, TypeVar
 
 import numpy as np
 import torch
-from torch.nn.functional import embedding
 from torch.utils.data import Sampler
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import transforms
 
 from .datasets import ImageNet, ImageNet22k
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
-from ..ctrlo import ocl_transforms, ocl_preprocessing
-from ..ctrlo.datasets import WebdatasetDataModule
+from ..ctrlo.data import ocl_transforms, ocl_preprocessing
+from dinov2.ctrlo.data.datasets import WebdatasetDataModule
 
 logger = logging.getLogger("dinov2")
 
@@ -118,7 +117,7 @@ def make_dataset(
                 ocl_preprocessing.SelectConditioningInfoVG(
                     embeddings_path=str(ds_root / "category_name_to_llama3_emb.pkl"),
                     num_max_binds=3,
-                    num_slots=3
+                    num_slots=7
                 ),  # Replace with `experiment.num_slots`
                 ocl_preprocessing.CopyFields(mapping={"instance_mask": "instance_mask_v2"})
             ]),
@@ -216,12 +215,23 @@ def make_dataset(
             "03b_preprocessing": train_transform_03b,
         }
 
+
+        shard_root = ds_root / ds_name / ds_split
+        assert shard_root.exists()
+        assert (shard_root / "shard-000000.tar").exists()
+        max_shard = sorted(shard_root.glob("shard*.tar"))[-1]
+
+        max_shard_number = max_shard.name.replace("shard-", "").replace(".tar", "")
+
+
+        shards_str = f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..{max_shard_number}}}.tar"
+
         dataset = WebdatasetDataModule(
             num_workers=1,
             batch_size=1,
-            train_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
-            val_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
-            test_shards=f"{ds_root}/{ds_name}/{ds_split}/shard-{{000000..001100}}.tar",
+            train_shards=shards_str,
+            val_shards=shards_str,
+            test_shards=shards_str,
             train_size=ds_size,
             val_size=ds_size,
             test_size=ds_size,

@@ -33,3 +33,7 @@ dino:
 ibot:
   separate_head: true
   head_n_prototypes: 131072
+ctrlo:
+  loss_weight: 1.0
+  slot_dim: 256
+  num_slots: 7

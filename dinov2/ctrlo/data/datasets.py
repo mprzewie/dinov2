@@ -2,6 +2,8 @@
 import collections
 import logging
 import os
+import random
+
 from distutils.util import strtobool
 from functools import partial
 from itertools import chain
@@ -15,10 +17,10 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils import collate as torch_collate
 from torchdata.datapipes.iter import IterDataPipe
 
-from dinov2.ctrlo.data_decoding import default_decoder
+from dinov2.ctrlo.data.data_decoding import default_decoder
 
-import dinov2.ctrlo.dataset_patches  # noqa: F401
-from dinov2.ctrlo.ocl_transforms import Transform
+import dinov2.ctrlo.data.dataset_patches  # noqa: F401
+from dinov2.ctrlo.data.ocl_transforms import Transform
 
 LOGGER = logging.getLogger(__name__)
 USE_AWS_SDK = strtobool(os.getenv("USE_AWS_SDK", "True"))
@@ -209,6 +211,9 @@ class WebdatasetDataModule:
             dataset = transform(dataset)
 
         def worker_init_fn(worker_id):
+            random.seed(worker_id)
+            torch.manual_seed(worker_id)
+            np.random.seed(worker_id)
             os.sched_setaffinity(0, range(os.cpu_count()))
 
         dataloader = DataLoader(

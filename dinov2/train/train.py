@@ -237,24 +237,12 @@ def do_train(cfg, model, resume=False):
         max_iter,
         start_iter,
     ):
-        def tellme(elem):
-            if isinstance(elem, (torch.Tensor, np.ndarray)):
-                return elem.shape
-            elif isinstance(elem, dict):
-                return {k: tellme(v) for k, v in elem.items()}
-            elif isinstance(elem, list):
-                return [tellme(e) for e in elem]
-            else:
-                return type(elem)
 
         # from pprint import pprint
         # pprint(tellme(data))
         # assert False
 
-        #TODO TU SKONCZYLEM
-        data = data["image_dino"]
-
-        current_batch_size = data["collated_global_crops"].shape[0] / 2
+        current_batch_size = data["image_dino"]["collated_global_crops"].shape[0] / 2
         if iteration > max_iter:
             return
 

@@ -10,6 +10,7 @@ import torch
 from einops import einsum
 from torch import nn
 
+from dinov2.ctrlo.ctrlo_modules import CTRLOWrapper
 from dinov2.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss
 from dinov2.models import build_model_from_cfg
 from dinov2.layers import DINOHead
@@ -122,6 +123,13 @@ class SSLMetaArch(nn.Module):
             p.requires_grad = False
         logger.info(f"Student and Teacher are built: they are both {cfg.student.arch} network.")
 
+        self.ctrlo_model = CTRLOWrapper(
+            num_slots=cfg.ctrlo.num_slots,
+            slot_dim=cfg.ctrlo.slot_dim,
+            feature_dim=embed_dim,
+            num_patches=(cfg.crops.global_crops_size // cfg.student.patch_size) ** 2
+        )
+
     def forward(self, inputs):
         raise NotImplementedError
 
@@ -131,23 +139,25 @@ class SSLMetaArch(nn.Module):
         else:
             loss.backward()
 
-    def forward_backward(self, images, teacher_temp):
+    def forward_backward(self, images_ctrlo_and_dino_input, teacher_temp):
+
+        images_dino = images_ctrlo_and_dino_input["image_dino"]
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
 
-        global_crops = images["collated_global_crops"].cuda(non_blocking=True)
-        local_crops = images["collated_local_crops"].cuda(non_blocking=True)
+        global_crops = images_dino["collated_global_crops"].cuda(non_blocking=True)
+        local_crops = images_dino["collated_local_crops"].cuda(non_blocking=True)
 
-        masks = images["collated_masks"].cuda(non_blocking=True)
-        mask_indices_list = images["mask_indices_list"].cuda(non_blocking=True)
-        n_masked_patches_tensor = images["n_masked_patches"].cuda(non_blocking=True)
+        masks = images_dino["collated_masks"].cuda(non_blocking=True)
+        mask_indices_list = images_dino["mask_indices_list"].cuda(non_blocking=True)
+        n_masked_patches_tensor = images_dino["n_masked_patches"].cuda(non_blocking=True)
         n_masked_patches = mask_indices_list.shape[0]
-        upperbound = images["upperbound"]
-        masks_weight = images["masks_weight"].cuda(non_blocking=True)
-        register_global_prompts = images["collated_global_labels"].cuda(non_blocking=True)
-        register_global_negatives = images["collated_global_negatives"].cuda(non_blocking=True)
-        register_local_prompts = images["collated_local_labels"].cuda(non_blocking=True)
+        upperbound = images_dino["upperbound"]
+        masks_weight = images_dino["masks_weight"].cuda(non_blocking=True)
+        # register_global_prompts = images["collated_global_labels"].cuda(non_blocking=True)
+        # register_global_negatives = images["collated_global_negatives"].cuda(non_blocking=True)
+        # register_local_prompts = images["collated_local_labels"].cuda(non_blocking=True)
 
 
         n_local_crops_loss_terms = max(n_local_crops * n_global_crops, 1)
@@ -165,8 +175,9 @@ class SSLMetaArch(nn.Module):
             x, n_global_crops_teacher = global_crops, n_global_crops
 
             # assert False, (register_global_prompts.shape, register_global_negatives.shape)
-            teacher_register_input = torch.cat([register_global_prompts.unsqueeze(1), register_global_negatives], dim=1)
+            # teacher_register_input = torch.cat([register_global_prompts.unsqueeze(1), register_global_negatives], dim=1)
             # print("TEACHER")
+            teacher_register_input = None
             teacher_backbone_output_dict = self.teacher.backbone(x, is_training=True, register_prompts=teacher_register_input, return_attention=True)
             teacher_cls_tokens = teacher_backbone_output_dict["x_norm_clstoken"]
             teacher_cls_tokens = teacher_cls_tokens.chunk(n_global_crops_teacher)
@@ -236,7 +247,8 @@ class SSLMetaArch(nn.Module):
 
             if teacher_backbone_output_dict["last_attn"] is not None:
 
-                reg_end = 1 + (self.cfg.student.num_register_tokens * teacher_register_input.shape[1])
+                tri = teacher_register_input.shape[1] if teacher_register_input is not None else 0
+                reg_end = 1 + (self.cfg.student.num_register_tokens * tri)
                 register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
                 # mean along the head dim
 
@@ -260,6 +272,7 @@ class SSLMetaArch(nn.Module):
         loss_accumulator = 0  # for backprop
 
         # print("STUDENT GLOBAL")
+        register_global_prompts = None
         student_global_backbone_output_dict = self.student.backbone(
             global_crops, masks=masks, is_training=True, register_prompts=register_global_prompts, return_attention=True
         )
@@ -267,6 +280,7 @@ class SSLMetaArch(nn.Module):
         # assert False, local_
         # crops.shape
         # print("STUDENT LOCAL")
+        register_local_prompts = None
         student_local_backbone_output_dict = self.student.backbone(
             local_crops, masks=None, is_training=True, register_prompts=register_local_prompts, return_attention=True
         )
@@ -364,43 +378,56 @@ class SSLMetaArch(nn.Module):
                     koleo_loss / loss_scales
                 )  # this is to display the same losses as before but we can remove eventually
 
-        if self.register_contrastive_loss_weight > 0:
-            # assert False, teacher_patch_reg_representations.shape
-            # B, 1+r_neg, E = teacher_patch_reg_representations.shape
-            reg_end = 1 + (self.cfg.student.num_register_tokens)
-            student_register_mean_attn = student_local_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
-            # assert False, student_register_mean_attn.shape
-            # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
-            # mean along the head dim
+        if self.cfg.ctrlo.loss_weight > 0:
 
-            student_local_patches = student_local_backbone_output_dict["x_norm_patchtokens"]
+            non_dino_input = {
+                k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v
+                for k,v
+                in images_ctrlo_and_dino_input.items()
+                if k != "image_dino"
+            }
+            ctrlo_loss = self.ctrlo_model.forward(non_dino_input, feature_extractor=self.student.backbone)
+            loss_dict["ctrlo_loss"] = ctrlo_loss
+            loss_accumulator += ctrlo_loss * self.cfg.ctrlo.loss_weight
 
-            # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  teacher_patch_reg_representations]]
-
-            student_local_patch_reg_representations = einsum(
-                student_register_mean_attn,
-                student_local_patches,
-                "b r p, b p e -> b r e"
-            )
-
-            teacher_patch_reg_representations_norm = F.normalize(teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_global_crops)
-            student_local_patch_reg_representations_norm = F.normalize(student_local_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_local_crops)
-
-            contr_loss_agg = 0
-            for tr in teacher_patch_reg_representations_norm:
-                for sr in student_local_patch_reg_representations_norm:
-                    cont_map = einsum(sr, tr, "b sr e, b tr e -> b sr tr")
-                    b, srn, trn = cont_map.shape
-                    assert srn == 1, cont_map.shape
-                    cont_map = cont_map.squeeze()
-                    assert cont_map.shape == (b, trn)
-                    labels = torch.zeros(len(cont_map), dtype=torch.long).to(cont_map.device)
-                    cont_loss = F.cross_entropy(cont_map, labels)
-                    contr_loss_agg += cont_loss
-
-                    # assert False, [tr.shape, sr.shape, cont_map.shape]
-            loss_dict["semantic_register_contrastive_loss"] = contr_loss_agg
-            loss_accumulator += contr_loss_agg * self.register_contrastive_loss_weight
+        # TODO remove the below probably
+        # if self.register_contrastive_loss_weight > 0:
+        #     assert False, teacher_patch_reg_representations.shape
+        #     # B, 1+r_neg, E = teacher_patch_reg_representations.shape
+        #     reg_end = 1 + (self.cfg.student.num_register_tokens)
+        #     student_register_mean_attn = student_local_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+        #     # assert False, student_register_mean_attn.shape
+        #     # register_patch_mean_attn = teacher_backbone_output_dict["last_attn"][:, :, 1:reg_end, reg_end:].mean(dim=1)
+        #     # mean along the head dim
+        #
+        #     student_local_patches = student_local_backbone_output_dict["x_norm_patchtokens"]
+        #
+        #     # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  teacher_patch_reg_representations]]
+        #
+        #     student_local_patch_reg_representations = einsum(
+        #         student_register_mean_attn,
+        #         student_local_patches,
+        #         "b r p, b p e -> b r e"
+        #     )
+        #
+        #     teacher_patch_reg_representations_norm = F.normalize(teacher_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_global_crops)
+        #     student_local_patch_reg_representations_norm = F.normalize(student_local_patch_reg_representations, eps=1e-8, p=2, dim=-1).chunk(n_local_crops)
+        #
+        #     contr_loss_agg = 0
+        #     for tr in teacher_patch_reg_representations_norm:
+        #         for sr in student_local_patch_reg_representations_norm:
+        #             cont_map = einsum(sr, tr, "b sr e, b tr e -> b sr tr")
+        #             b, srn, trn = cont_map.shape
+        #             assert srn == 1, cont_map.shape
+        #             cont_map = cont_map.squeeze()
+        #             assert cont_map.shape == (b, trn)
+        #             labels = torch.zeros(len(cont_map), dtype=torch.long).to(cont_map.device)
+        #             cont_loss = F.cross_entropy(cont_map, labels)
+        #             contr_loss_agg += cont_loss
+        #
+        #             # assert False, [tr.shape, sr.shape, cont_map.shape]
+        #     loss_dict["semantic_register_contrastive_loss"] = contr_loss_agg
+        #     loss_accumulator += contr_loss_agg * self.register_contrastive_loss_weight
 
             # print(register_global_prompts)
             #
@@ -416,6 +443,7 @@ class SSLMetaArch(nn.Module):
             # )
 
             # assert False, [t.shape for t in [student_local_patches, student_register_mean_attn,  student_local_patch_reg_representations, teacher_patch_reg_representations]]
+
         if do_ibot:
             # compute loss
             ibot_patch_loss = (

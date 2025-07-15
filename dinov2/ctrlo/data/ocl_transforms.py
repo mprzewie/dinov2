@@ -14,7 +14,7 @@ import torch
 from torchdata.datapipes.iter import IterDataPipe
 from torchdata.datapipes.utils import StreamWrapper
 
-import dinov2.ctrlo.dataset_patches  # noqa: F401
+import dinov2.ctrlo.data.dataset_patches  # noqa: F401
 
 try:
     import decord
