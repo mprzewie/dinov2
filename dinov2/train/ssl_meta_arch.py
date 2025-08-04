@@ -112,7 +112,7 @@ class SSLMetaArch(nn.Module):
             else:
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
 
-        self.register_contrastive_loss_weight = cfg.student.register_contrastive_loss_weight
+        # self.register_contrastive_loss_weight = cfg.student.register_contrastive_loss_weight
         self.need_to_synchronize_fsdp_streams = True
 
         self.student = nn.ModuleDict(student_model_dict)
