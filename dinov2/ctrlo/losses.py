@@ -1,7 +1,7 @@
 from math import log
 from typing import Dict, Optional, Tuple
 
-import pytorch_lightning as pl
+# import pytorch_lightning as pl
 import torch
 from einops import rearrange, repeat
 from torch import nn
@@ -732,7 +732,7 @@ class CLIPLoss(nn.Module):
         self,
         first: typing.PooledFeatures,
         second: typing.PooledFeatures,
-        model: Optional[pl.LightningModule] = None,
+        model: Optional["pl.LightningModule"] = None,
     ) -> Tuple[float, Dict[str, torch.Tensor]]:
         """Compute CLIP loss.
 
