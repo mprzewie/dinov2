@@ -378,7 +378,7 @@ class SSLMetaArch(nn.Module):
                     koleo_loss / loss_scales
                 )  # this is to display the same losses as before but we can remove eventually
 
-        if self.cfg.ctrlo.loss_weight > 0:
+        if self.cfg.ctrlo.loss_weights.reconstruction > 0:
 
             non_dino_input = {
                 k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v
@@ -386,9 +386,23 @@ class SSLMetaArch(nn.Module):
                 in images_ctrlo_and_dino_input.items()
                 if k != "image_dino"
             }
-            ctrlo_loss = self.ctrlo_model.forward(non_dino_input, feature_extractor=self.student.backbone)
-            loss_dict["ctrlo_loss"] = ctrlo_loss
-            loss_accumulator += ctrlo_loss * self.cfg.ctrlo.loss_weight
+            ctrlo_losses = self.ctrlo_model.forward(non_dino_input, feature_extractor=self.student.backbone)
+            ctrlo_reconstruction_loss = ctrlo_losses["mse_loss"]
+            ctrlo_contrastive_loss_lang = ctrlo_losses["lang_loss"]
+            ctrlo_contrastive_loss_point = ctrlo_losses["point_loss"]
+
+            loss_dict["ctrlo_reconstruction_loss"] = ctrlo_reconstruction_loss
+            loss_dict["ctrlo_contrastive_loss_lang"] = ctrlo_contrastive_loss_lang
+            loss_dict["ctrlo_contrastive_loss_point"] = ctrlo_contrastive_loss_point
+            loss_accumulator += (
+                self.cfg.ctrlo.loss_weights.reconstruction * ctrlo_reconstruction_loss +
+                self.cfg.ctrlo.loss_weights.contrastive_lang * ctrlo_contrastive_loss_lang +
+                self.cfg.ctrlo.loss_weights.contrastive_point * ctrlo_contrastive_loss_point
+            )
+            #self.ctrlo_loss_weight * ctrlo_contrastive_loss_point
+
+            # loss_dict["ctrlo_loss"] = ctrlo_loss
+            # loss_accumulator += ctrlo_loss * self.cfg.ctrlo.loss_weight
 
         # TODO remove the below probably
         # if self.register_contrastive_loss_weight > 0:

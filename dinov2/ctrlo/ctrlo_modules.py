@@ -178,26 +178,25 @@ class CTRLOWrapper(nn.Module):
 class CTRLOLosses(nn.Module):
     def __init__(
             self,
-            reconstruction_loss_weight: float = 1.0,
-            contrastive_loss_lang_weight: float = 0.2,
-            contrastive_loss_point_weight: float = 0.2,
-
+            # reconstruction_loss_weight: float = 1.0,
+            # contrastive_loss_lang_weight: float = 0.2,
+            # contrastive_loss_point_weight: float = 0.2,
     ):
         super().__init__()
         self.mse = ReconstructionLoss(
             loss_type="mse",
-            weight=reconstruction_loss_weight,
+            # weight=1, #reconstruction_loss_weight,
         )
         self.contrastive_loss_lang = DiagonalContrastiveLoss(
             temp=0.1,
             batch_contrastive=True,
-            weight=contrastive_loss_lang_weight,
+            # weight=contrastive_loss_lang_weight,
         )
 
         self.contrastive_loss_point = DiagonalContrastiveLoss(
             temp=0.1,
             batch_contrastive=True,
-            weight=contrastive_loss_point_weight,
+            # weight=contrastive_loss_point_weight,
         )
 
     def forward(
@@ -227,17 +226,22 @@ class CTRLOLosses(nn.Module):
             contrastive_loss_mask=contrastive_mask,
         )
 
-        print(type_or_shape([
-            ft_features,
-            dec_reconstruction,
-            proj_slots,
-            lang_embedding,
-            point_embedding,
-            contrastive_mask,
-            mse_loss, lang_loss, point_loss,
-        ]))
+        return dict(
+            mse_loss=mse_loss,
+            lang_loss=lang_loss,
+            point_loss=point_loss,
+        )
+        # print(type_or_shape([
+        #     ft_features,
+        #     dec_reconstruction,
+        #     proj_slots,
+        #     lang_embedding,
+        #     point_embedding,
+        #     contrastive_mask,
+        #     mse_loss, lang_loss, point_loss,
+        # ]))
 
-        return mse_loss + lang_loss + point_loss
+        # return mse_loss + lang_loss + point_loss
 
 
 
