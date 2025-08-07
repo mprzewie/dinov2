@@ -381,8 +381,8 @@ class SSLMetaArch(nn.Module):
         if self.cfg.ctrlo.loss_weights.reconstruction > 0:
 
             non_dino_input = {
-                k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v
-                for k,v
+                k: v.to(torch.half).cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v
+                for k, v
                 in images_ctrlo_and_dino_input.items()
                 if k != "image_dino"
             }
