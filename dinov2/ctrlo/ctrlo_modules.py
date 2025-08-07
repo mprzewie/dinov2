@@ -104,7 +104,7 @@ class CTRLOWrapper(nn.Module):
 
     def forward(self, inputs_dict: dict, feature_extractor: DinoVisionTransformer):
         from pprint import pprint
-        # pprint(type_or_shape(inputs_dict))
+        pprint(type_or_shape(inputs_dict))
 
         # inputs_dict = {
         #     k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v

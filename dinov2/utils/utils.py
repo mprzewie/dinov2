@@ -116,7 +116,7 @@ def has_batchnorms(model):
 
 def type_or_shape(elem):
     if isinstance(elem, (torch.Tensor, np.ndarray)):
-        return elem.shape
+        return (elem.shape, elem.dtype)
     elif isinstance(elem, dict):
         return {k: type_or_shape(v) for k, v in elem.items()}
     elif isinstance(elem, list):
