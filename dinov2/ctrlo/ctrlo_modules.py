@@ -104,7 +104,7 @@ class CTRLOWrapper(nn.Module):
 
     def forward(self, inputs_dict: dict, feature_extractor: DinoVisionTransformer):
         from pprint import pprint
-        pprint(type_or_shape(inputs_dict))
+        # pprint(type_or_shape(inputs_dict))
 
         # inputs_dict = {
         #     k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v
@@ -115,7 +115,7 @@ class CTRLOWrapper(nn.Module):
         H = feature_extractor.forward_features(inputs_dict["image"])["x_norm_patchtokens"]
 
         fe_out = typing.FeatureExtractorOutput(
-            features=H,
+            features=H.float(),
             positions=torch.empty((H.shape[0], 0, 0))
         )
 
