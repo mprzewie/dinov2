@@ -167,7 +167,7 @@ class PointEmbeddingHead(nn.Module):
         point_embedding: torch.Tensor,
     ) -> torch.Tensor:
 
-        emb_point = self.point(point_embedding)
+        emb_point = self.point(point_embedding.float())
         embedding = emb_point
         if self.mlp is not None:
             embedding = self.mlp(embedding)
