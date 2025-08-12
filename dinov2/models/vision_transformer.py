@@ -461,6 +461,18 @@ def vit_large(patch_size=16, num_register_tokens=0, **kwargs):
     )
     return model
 
+def vit_large_attn(patch_size=16, num_register_tokens=0, **kwargs):
+    model = DinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4,
+        block_fn=partial(Block, attn_class=Attention),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
+    return model
 
 def vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
     """
