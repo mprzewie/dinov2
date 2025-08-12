@@ -30,7 +30,7 @@ from dinov2.eval.setup import get_args_parser as get_setup_args_parser
 from dinov2.eval.setup import setup_and_build_model
 from dinov2.eval.utils import ModelWithIntermediateLayers, evaluate
 from dinov2.logging import MetricLogger
-from dinov2.data.datasets.other_datasets import load_datasets
+# from dinov2.data.datasets.other_datasets import load_datasets
 
 logger = logging.getLogger("dinov2")
 
@@ -234,11 +234,18 @@ def run_dump_embeddings(
 ):
     seed = 0
 
-    datasets = load_datasets(
-        dataset=dataset_name,
-        datadir=dataset_root,
-        pretrain_data="imagenet100",
-    )
+    datasets = {
+        "train": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/train", make_classification_train_transform()),
+        "val": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/val", make_classification_eval_transform()),
+        "test": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/val", make_classification_eval_transform()),
+        "trainval": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/train", make_classification_train_transform()),
+    }
+    
+    # datasets = load_datasets(
+    #     dataset=dataset_name,
+    #     datadir=dataset_root,
+    #     pretrain_data="imagenet100",
+    # )
     training_num_classes = datasets["num_classes"]
     sampler_type = None #SamplerType.SHARDED_INFINITE
 
