@@ -123,6 +123,10 @@ def apply_optim_scheduler(optimizer, lr, wd, last_layer_lr):
 
 def do_test(cfg, model, iteration):
     new_state_dict = model.teacher.state_dict()
+    ctrlo_state_dict = dict()
+    if hasattr(model, "ctrlo_model"):
+        ctrlo_state_dict = model.ctrlo_model.state_dict()
+
 
     if distributed.is_main_process():
         iterstring = str(iteration)
@@ -132,7 +136,8 @@ def do_test(cfg, model, iteration):
         teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
         torch.save({
             "iteration": iteration,
-            "teacher": new_state_dict
+            "teacher": new_state_dict,
+            "ctrlo": ctrlo_state_dict,
         }, teacher_ckp_path
         )
 
