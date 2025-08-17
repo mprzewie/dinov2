@@ -89,7 +89,8 @@ class Block(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         def attn_residual_func(x: Tensor) -> Tensor:
             if isinstance(self.attn, MemEffAttention):
-                return self.ls1(self.attn(self.norm1(x)))
+                x = self.ls1(self.attn(self.norm1(x)))
+                return x, None
             elif isinstance(self.attn, Attention):
                 x, attn = self.attn(self.norm1(x), return_attention=True)
                 x = self.ls1(x)

@@ -245,6 +245,7 @@ class SSLMetaArch(nn.Module):
             else:
                 raise NotImplementedError
 
+            teacher_patch_reg_representations = None
             if teacher_backbone_output_dict["last_attn"] is not None:
 
                 tri = teacher_register_input.shape[1] if teacher_register_input is not None else 0
