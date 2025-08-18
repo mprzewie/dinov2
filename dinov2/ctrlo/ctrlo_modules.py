@@ -27,7 +27,7 @@ class CTRLOWrapper(nn.Module):
         slot_dim: int,
         num_patches: int,
         lang_dim: int = 4096,
-        embedding_dim: int = 512,
+        embedding_dim: int = 4096,
     ):
         object_dim = slot_dim
         super().__init__()
