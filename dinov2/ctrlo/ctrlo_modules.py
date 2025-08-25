@@ -28,9 +28,11 @@ class CTRLOWrapper(nn.Module):
         num_patches: int,
         lang_dim: int = 4096,
         embedding_dim: int = 4096,
+        detach_ft_features: bool = False,
     ):
         object_dim = slot_dim
         super().__init__()
+        self.detach_ft_features = detach_ft_features
         self.conditioning = LangConditioning(
             n_slots=num_slots,
             object_dim=object_dim,
@@ -113,6 +115,9 @@ class CTRLOWrapper(nn.Module):
 
 
         H = feature_extractor.forward_features(inputs_dict["image"])["x_norm_patchtokens"]
+
+        if self.detach_ft_features:
+            H = H.detach()
 
         fe_out = typing.FeatureExtractorOutput(
             features=H.float(),

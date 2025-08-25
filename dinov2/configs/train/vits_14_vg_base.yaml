@@ -38,6 +38,7 @@ ctrlo:
   loss_weight: 1.0
   slot_dim: 256
   num_slots: 7
+  detach_ft_features: false
   loss_weights:
     reconstruction: 1.0
     contrastive_lang: 0.2

@@ -127,7 +127,8 @@ class SSLMetaArch(nn.Module):
             num_slots=cfg.ctrlo.num_slots,
             slot_dim=cfg.ctrlo.slot_dim,
             feature_dim=embed_dim,
-            num_patches=(cfg.crops.global_crops_size // cfg.student.patch_size) ** 2
+            num_patches=(cfg.crops.global_crops_size // cfg.student.patch_size) ** 2,
+            detach_ft_features=cfg.ctrlo.detach_ft_features,
         )
 
     def forward(self, inputs):
