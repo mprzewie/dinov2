@@ -235,12 +235,14 @@ def run_dump_embeddings(
     seed = 0
 
     datasets = {
-        "train": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/train", make_classification_train_transform()),
-        "val": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/val", make_classification_eval_transform()),
-        "test": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/val", make_classification_eval_transform()),
-        "trainval": make_dataset(f"ImageFolder:root={str(args.dataset_root / args.dataset_name)}/train", make_classification_train_transform()),
+        "train": make_dataset(dataset_str=f"ImageFolder:root={str(args.dataset_root)}/train", transform_dino=make_classification_train_transform()),
+        "val": make_dataset(dataset_str=f"ImageFolder:root={str(args.dataset_root)}/val", transform_dino=make_classification_eval_transform()),
+        # "test": make_dataset(dataset_str=f"ImageFolder:root={str(args.dataset_root)}/val", transform_dino=make_classification_eval_transform()),
+        # "trainval": make_dataset(dataset_str=f"ImageFolder:root={str(args.dataset_root)}/train", transform_dino=make_classification_train_transform()),
+        "num_classes": 1000
     }
-    
+
+    # datasets["test"] = 
     # datasets = load_datasets(
     #     dataset=dataset_name,
     #     datadir=dataset_root,
@@ -257,7 +259,7 @@ def run_dump_embeddings(
 
     result = dict()
     with torch.no_grad():
-        for key in ["train", "val", "trainval", "test"]:
+        for key in ["train", "val"]: #, "trainval", "test"]:
 
             all_embeddings = []
             all_labels = []
@@ -299,6 +301,9 @@ def run_dump_embeddings(
                 k: v.shape
                 for k, v in result[key].items()
             })
+            
+        result["trainval"] = result["train"]
+        result["test"] = result["val"]
 
     # print(f"Saving embeddings")
     # torch.save(result, Path(output_dir) / f"{dataset_name}_for_linear.pth")
