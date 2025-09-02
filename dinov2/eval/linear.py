@@ -14,6 +14,7 @@ from typing import List, Optional
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.fx.subgraph_rewriter import replace_pattern_with_filters
 from torch.nn.parallel import DistributedDataParallel
 from fvcore.common.checkpoint import Checkpointer, PeriodicCheckpointer
 from torchvision.datasets import ImageFolder
@@ -362,10 +363,14 @@ def eval_linear(
     ):
         data = data.cuda(non_blocking=True)
 
-        labels, (prompts, _) = labels_prompts
+        if isinstance(labels_prompts, tuple):
+            labels, (prompts, _) = labels_prompts
+            prompts = prompts.cuda(non_blocking=True)
+        else:
+            labels = labels_prompts
+            prompts = None
 
         labels = labels.cuda(non_blocking=True)
-        prompts = prompts.cuda(non_blocking=True)
 
         features = feature_model(data, register_prompts=prompts)
         outputs = linear_classifiers(features)
@@ -427,15 +432,20 @@ def eval_linear(
 
 
 def make_eval_data_loader(test_dataset_str, batch_size, num_workers, metric_type, register_prompt_encoding_size: int, target_encoder: str):
-    TE_CLS = TargetEncoder if target_encoder == "target" else RandomEncoder
-    test_dataset = make_dataset(
-        dataset_str=test_dataset_str,
-        transform_dino=make_classification_eval_transform(),
-        target_transform=TargetKeeperAndEncoder(
+    if target_encoder is None:
+        target_transform = None
+    else:
+        TE_CLS = TargetEncoder if target_encoder == "target" else RandomEncoder
+        target_transform = TargetKeeperAndEncoder(
             TE_CLS(
                 encoding_size=register_prompt_encoding_size
             )
         )
+
+    test_dataset = make_dataset(
+        dataset_str=test_dataset_str,
+        transform_dino=make_classification_eval_transform(),
+        target_transform=target_transform,
     )
     test_data_loader = make_data_loader(
         dataset=test_dataset,
@@ -525,14 +535,20 @@ def run_eval_linear(
     train_transform = make_classification_train_transform()
     TRAIN_TE_CLS = TargetEncoder if train_target_encoder == "target" else RandomEncoder
 
+    target_transform_kwargs = dict()
+    if model.register_prompt_generator is not None:
+        target_transform_kwargs = dict(
+            target_transform=TargetKeeperAndEncoder(
+                TRAIN_TE_CLS(
+                    encoding_size=model.register_prompt_generator.in_features
+                )
+            )
+        )
+
     train_dataset = make_dataset(
         dataset_str=train_dataset_str,
         transform_dino=train_transform,
-        target_transform=TargetKeeperAndEncoder(
-           TRAIN_TE_CLS(
-                encoding_size=model.register_prompt_generator.in_features
-            )
-        )
+        **target_transform_kwargs,
     )
 
     if isinstance(train_dataset, ImageFolder):
@@ -547,7 +563,13 @@ def run_eval_linear(
     n_last_blocks = max(n_last_blocks_list)
     autocast_ctx = partial(torch.cuda.amp.autocast, enabled=True, dtype=autocast_dtype)
     feature_model = ModelWithIntermediateLayers(model, n_last_blocks, autocast_ctx)
-    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda(), register_prompts=train_dataset[0][1][1][0].unsqueeze(0).cuda())
+
+    maybe_register_prompt = (
+        None
+        if model.register_prompt_generator is None
+        else train_dataset[0][1][1][0].unsqueeze(0).cuda()
+    )
+    sample_output = feature_model(train_dataset[0][0].unsqueeze(0).cuda(), register_prompts=maybe_register_prompt)
 
     linear_classifiers, optim_param_groups = setup_linear_classifiers(
         sample_output,
@@ -573,9 +595,14 @@ def run_eval_linear(
         drop_last=True,
         persistent_workers=True,
     )
+
     val_data_loader = make_eval_data_loader(
         val_dataset_str, batch_size, num_workers, val_metric_type,
-        register_prompt_encoding_size=feature_model.feature_model.register_prompt_generator.in_features,
+        register_prompt_encoding_size=(
+            feature_model.feature_model.register_prompt_generator.in_features
+            if feature_model.feature_model.register_prompt_generator is not None
+            else None
+        ),
         target_encoder=val_target_encoder,
     )
 
