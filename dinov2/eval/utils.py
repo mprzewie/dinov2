@@ -66,7 +66,11 @@ def evaluate(
     for samples, targets, *_ in metric_logger.log_every(data_loader, 10, header):
         if isinstance(targets, list):
             targets, (prompts, _) = targets
-            outputs = model(samples.to(device), register_prompts=prompts.to(device))
+            prompts = prompts.to(device)
+        else:
+            prompts = None
+        outputs = model(samples.to(device), register_prompts=prompts)
+
 
         targets = targets.to(device)
 

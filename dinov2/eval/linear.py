@@ -603,7 +603,11 @@ def run_eval_linear(
             if feature_model.feature_model.register_prompt_generator is not None
             else None
         ),
-        target_encoder=val_target_encoder,
+        target_encoder=(
+            val_target_encoder
+            if feature_model.feature_model.register_prompt_generator is not None
+            else None
+        )
     )
 
     checkpoint_period = save_checkpoint_frequency * epoch_length
