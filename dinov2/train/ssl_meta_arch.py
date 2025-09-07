@@ -47,7 +47,12 @@ class SSLMetaArch(nn.Module):
         if cfg.student.pretrained_weights:
             chkpt = torch.load(cfg.student.pretrained_weights)
             logger.info(f"OPTIONS -- pretrained weights: loading from {cfg.student.pretrained_weights}")
-            student_backbone.load_state_dict(chkpt["model"], strict=False)
+            loading_results = student_backbone.load_state_dict(chkpt["model"], strict=False)
+            logger.info(loading_results)
+        else:
+            logger.info("OPTIONS -- no pretrained weights")
+
+
 
         self.embed_dim = embed_dim
         self.dino_out_dim = cfg.dino.head_n_prototypes
@@ -550,3 +555,17 @@ class SSLMetaArch(nn.Module):
             self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
             teacher_model_cfg = self.cfg.compute_precision.teacher[k]
             self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])
+
+            from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, StateDictType, FullStateDictConfig
+
+            full_cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=False)
+
+            # NEW: force FULL state-dict on both freshly wrapped modules
+            FSDP.set_state_dict_type(self.student[k], StateDictType.FULL_STATE_DICT, full_cfg)
+            FSDP.set_state_dict_type(self.teacher[k], StateDictType.FULL_STATE_DICT, full_cfg)
+            #
+            # if isinstance(model, FSDP):
+            #     # make load/save expect a FULL (unsharded, non-flat) state dict
+            #     FSDP.set_state_dict_type(
+            #         model, StateDictType.FULL_STATE_DICT
+            #     )
